@@ -1,0 +1,5115 @@
+---
+title: "01-Analysis scRNAseq"
+author: "Veronika Niederlova"
+date: "2024-10-01"
+output: rmdformats::downcute
+---
+
+<style>
+
+div.white pre { background-color:white; color:black}
+div.white pre.r { background-color:white; color:black}
+
+</style>
+
+<div class = "white">
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = TRUE, warning = FALSE, message = FALSE, error = TRUE, cache = TRUE, cache.lazy = FALSE)
+
+library("Matrix")
+library(Seurat)
+library(pheatmap)
+library(DT)
+library(data.table)
+library(dplyr)
+library(here)
+library(ggplot2)
+library(SingleCellExperiment)
+library(scater)
+library(mclust)
+library(kableExtra)
+library(cowplot)
+library(tidyverse)
+library(reshape)
+library(fgsea)
+library(SingleR)
+library(topGO)
+library(annotate)
+library("org.Mm.eg.db")
+library(biomaRt)
+library(ReactomePA)
+library(patchwork)
+library(STACAS)
+
+convertHumanGeneList2 <- function(x){
+
+require("biomaRt")
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl", host = "https://dec2021.archive.ensembl.org/")
+mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl", host = "https://dec2021.archive.ensembl.org/")
+
+genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x , mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T)
+
+humanx <- unique(genesV2[, 2])
+
+# Print the first 6 genes found to the screen
+print(head(humanx))
+return(humanx)
+}
+
+ggtheme <- function() {
+  theme(
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    text = element_text(size = 20, colour = "black"),
+    legend.text = element_text(size = 20),
+    legend.key.size =  unit(10, units = "points")
+    
+  )
+}
+
+
+  
+  reduced_annot  <- function(seurat_object, tier_name, n_cells_to_other){
+    md  <- seurat_object@meta.data
+    tier_name_red  <- paste0(tier_name,"_red")
+    cell_types_keep  <- (md  %>% group_by_at(tier_name)  %>% tally()  %>% arrange(desc(n)) %>% dplyr::filter(n > n_cells_to_other))[[tier_name]]
+    md[[tier_name_red]]  <- if_else(md[[tier_name]] %in% cell_types_keep,as.character(md[[tier_name]]),"Other")
+    seurat_object  <- AddMetaData(seurat_object, metadata = md[[tier_name_red]], tier_name_red)
+    return(seurat_object)
+}
+
+  rank_score_func <- function(df){
+
+df <- df %>% mutate(score = -1*log(p_val_adj+(10^-310))*avg_log2FC*(pct.1/(pct.2+10^-300)))
+
+return(df)
+  }
+  
+```
+
+# Loading data for analysis recapitulation 
+
+```{r}
+funda_merge <- readRDS("./data/seu_merged_nod_mapping.rds")
+```
+
+# Introduction
+
+This is analysis of the first experiment of RNA sequencing of tissues from NOD mice on gluten free diet (GFD) and mice on standard diet (STD). 
+
+In this run, we processed:
+
+*Well 1:*
+
+- spleens from 5 mice on GFD, mouseIDs 1-5
+- spleens from 4 mice on STD, mouseIDs 6-9
+
+*Well 2:*
+- pancreatic lymph nodes (pLN) from 5 mice on GFD, mouseIDs 1-5
+- pLN from 4 mice on STD, mouseIDs 6-9
+
+Samples were multiplexed using the TotalSeq-C anti-mouse hashtag antibodies (anti-CD45 clone 30-F11, anti-H-2 clone M1/42, Biolegend, #155869 (MH5), #155871 (MH6), #155873 (MH7), #155875 (MH8), #155877 (MH9) and #155879 (MH10)). Cells were loaded onto a 10x Chromium machine (10x Genomics) aiming at the yield of 1200 cells per sample and processed with Feature Barcode technology for Cell Surface Protein protocol (#CG000186 Rev D) with the Chromium Single Cell 5’ Library & Gel Bead and Chromium Single Cell 5' Feature Barcode Library kits (10x Genomics, #PN-1000014, #PN-1000020, #PN-1000080, #PN-1000009, #PN-1000084). Resulting cDNA libraries were sequenced on NovaSeq 6000 (Illumina) with the S1 Reagent Kit (100 or 300 cycles, Illumina, #20012865, #20012863).
+
+The initial processing was done by Juraj Michalik: 
+- Alignment of FASTQ with Cellranger tool (`cellranger-5.0.1`)
+- Mapping reads to NOD genome (`Mus_musculus_nodshiltj.NOD_ShiLtJ_v1.102`)
+- CellRanger outputs are attached (`W4_web_summary.html`, `W3_web_summary.html`)
+
+
+# Spleen
+
+## Load the data
+
+Read data from well 3 - Spleen. 
+
+```{r}
+
+seu <- readRDS("G://48_lab/DATA_scRNAseq/Experiments_lab48/Exp11/04_Raw_data/Rds/exp11W3_init.rds")
+
+seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^mt-")
+seu[["percent.rt"]] <- PercentageFeatureSet(seu, pattern = "^Rp[ls]")
+
+# Remove TRAV, TRBV, mito and ribo genes: spleen
+seu_annots <- seu@meta.data
+seu_counts <- seu[!grepl('Tr[ab]v|mt-|Rp[ls]|MGP-', rownames(seu)),]
+```
+
+Filtering out ```nrow(seu)-nrow(seu_counts)``` genes:
+
+```{r}
+data.table(rownames(seu)[which(grepl('Tr[ab]v|mt-|Rp[ls]|MGP-', rownames(seu)))]) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+## Clustering and automated annotation
+
+```{r, fig.width=19, fig.height=5.5}
+
+seu <- CreateSeuratObject(counts = seu_counts[["RNA"]]@counts, 
+                          project = "seu", 
+                          min.cells = 3, 
+                          min.features = 200, 
+                          meta.data = seu_annots)
+
+  seu <- NormalizeData(object = seu)
+  seu <- ScaleData(seu, verbose = FALSE)
+  seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  seu <- RunPCA(seu, npcs = 20, verbose = FALSE)
+  seu <- RunUMAP(seu, reduction = "pca", dims = 1:20)
+  seu <- FindNeighbors(seu, dims = 1:20)
+  seu <- FindClusters(seu, resolution = 0.9)
+
+counts <- GetAssayData(seu[["RNA"]])
+
+seu_singler <- CreateSinglerObject(counts=counts,
+  project.name= "E07_Tregs", # choose
+  min.genes = 200, # ignore cells with fewer than 200 transcripts
+  technology = "10x", # choose
+  species = "Mouse",
+  citation = "Our 10x data exp 01-05", # choose
+  normalize.gene.length = FALSE,        # needed for full-length platforms (e.g. smartseq)
+  variable.genes = "de",  # see vignette
+  fine.tune = FALSE, # TRUE would take very long
+  reduce.file.size = TRUE, # leave out less-often used fields 
+  do.signatures = FALSE,
+  do.main.types = TRUE,
+  numCores = 16)
+
+seu <- AddMetaData(seu,
+seu_singler$singler[[1]]$SingleR.single$labels,
+                                 col.name = "Immgen_annot_single")
+seu <- AddMetaData(seu,
+seu_singler$singler[[1]]$SingleR.single.main$labels,
+                                 col.name = "Immgen_annot_single_main")
+seu <- AddMetaData(seu,
+seu_singler$singler[[2]]$SingleR.single.main$labels,
+                                 col.name = "MouseRNAseq_single_main")
+seu <- AddMetaData(seu,
+seu_singler$singler[[2]]$SingleR.single$labels,
+                                 col.name = "MouseRNAseq_single")
+
+cowplot::plot_grid(DimPlot(seu, group.by = "MouseRNAseq_single_main"),
+    DimPlot(seu, group.by = "Immgen_annot_single_main"), ncol = 2)
+
+seu_spleen <- seu
+
+DimPlot(seu_spleen, group.by = "Immgen_annot_single_main", raster = T, raster.dpi = c(900,900))
+ggsave("./fig/spleen_annotations.svg", width = 16, height = 12, units = "cm")
+
+seu_spleen_filt <- subset(seu_spleen, nFeature_RNA > 750 & percent.mt < 7.5 & seurat_clusters %in% 0:14 &
+                          Immgen_annot_single_main %in% c("T cells", "NK cells", "NKT", "Tgd", "ILC")  )
+
+seu_spleen$keep <- colnames(seu_spleen) %in% colnames(seu_spleen_filt)
+
+
+DimPlot(seu_spleen, group.by = "keep", raster = T, raster.dpi = c(900,900), pt.size = 3.5, cols = c("red","grey88"))
+
+ggsave("./fig/spleen_qc.svg", width = 13, height = 12, units = "cm")
+```
+
+
+## Add metadata
+
+We need to connect the hashtags of the analyzed mice with MouseIDs and matching diets. 
+
+```{r}
+seu_spleen$hashtags %>% table
+
+md_spleen <- seu_spleen@meta.data 
+md_spleen <- md_spleen %>% mutate(MouseID = str_replace_all(string = hashtags, pattern = "_Hashtag", replacement = ""))
+md_spleen <- md_spleen %>% mutate(Diet = if_else(MouseID %in% c("Mouse_1", "Mouse_2", "Mouse_3", "Mouse_4", "Mouse_5"), "GFD", "Standard"))
+
+seu_spleen@meta.data <- md_spleen
+```
+
+```{r}
+DimPlot(seu_spleen, label = T)
+```
+
+
+## Remove contaminating and low quality cells
+
+```{r}
+VlnPlot(seu_spleen, features = c("nCount_RNA","nFeature_RNA","percent.mt","percent.rt"), ncol = 2)
+seu_spleen_filt <- subset(seu_spleen, nFeature_RNA > 750 & percent.mt < 7.5 & seurat_clusters %in% 0:14)
+```
+
+
+
+Filtering removed ```ncol(seu_spleen)-ncol(seu_spleen_filt)``` cells
+
+
+```{r}
+seu_spleen_filt <- NormalizeData(object = seu_spleen_filt)
+  seu_spleen_filt <- ScaleData(seu_spleen_filt, verbose = FALSE)
+  seu_spleen_filt <- FindVariableFeatures(seu_spleen_filt, selection.method = "vst", nfeatures = 500, 
+                                       verbose = FALSE)
+  seu_spleen_filt <- RunPCA(seu_spleen_filt, npcs = 12, verbose = FALSE)
+  seu_spleen_filt <- RunUMAP(seu_spleen_filt, reduction = "pca", dims = 1:12)
+  seu_spleen_filt <- FindNeighbors(seu_spleen_filt, dims = 1:12)
+  seu_spleen_filt <- FindClusters(seu_spleen_filt, resolution = 0.7)
+
+  DimPlot(seu_spleen_filt, group.by = "Immgen_annot_single_main", label = T, repel = T) 
+  DimPlot(seu_spleen_filt, group.by = "MouseRNAseq_single_main", label = T, repel = T) 
+  DimPlot(seu_spleen_filt, label = T, repel = T) 
+```
+
+
+```{r fig.width=16, fig.height = 9}
+
+ seu_spleen_filt <- reduced_annot(seu_spleen_filt, "Immgen_annot_single", n_cells_to_other = 30)
+
+DimPlot(seu_spleen_filt, group.by = "Immgen_annot_single_red", label = T, repel = T) 
+  #ggsave("fig/Immgen_dimplot_spleen_filt_Immgen_single.png", width = 40, height = 20, units = "cm")
+```
+
+## Analysis of spleen clusters
+
+Immgen Annotations
+
+```{r fig.width=12, fig.height = 12}
+seurat_meta_data <- seu_spleen_filt@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, Immgen_annot_single_red) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(Immgen_annot_single_red, labels = str_replace(levels(factor(df4$Immgen_annot_single_red)), pattern = " \\(", replacement = " \n(")), scales = "free", ncol = 5) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90)) + ggtheme() 
+
+ #ggsave("fig/clusters_boxplots_spleen_filt_Immgen_single.png", width = 27, height = 35, units = "cm")
+```
+
+Seurat clusters 
+
+```{r}
+seurat_meta_data <- seu_spleen_filt@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 5) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+ #ggsave("fig/clusters_boxplots_spleen_filt_clusters.png", width = 16, height = 16, units = "cm")
+```
+
+
+
+## Filter lymphoid populations
+
+## Filter high quality & lymphoid populations
+
+```{r}
+seu_spleen_filt_lymph <- subset(seu_spleen, nFeature_RNA > 750 & percent.mt < 7.5 & Immgen_annot_single_main %in% c("T cells", "NK cells", "NKT", "Tgd", "ILC"))
+
+seu_spleen_filt_lymph <- NormalizeData(object = seu_spleen_filt_lymph)
+  seu_spleen_filt_lymph <- ScaleData(seu_spleen_filt_lymph, verbose = FALSE)
+  seu_spleen_filt_lymph <- FindVariableFeatures(seu_spleen_filt_lymph, selection.method = "vst", nfeatures = 500, 
+                                       verbose = FALSE)
+  seu_spleen_filt_lymph <- RunPCA(seu_spleen_filt_lymph, npcs = 12, verbose = FALSE)
+  seu_spleen_filt_lymph <- RunUMAP(seu_spleen_filt_lymph, reduction = "pca", dims = 1:12)
+  seu_spleen_filt_lymph <- FindNeighbors(seu_spleen_filt_lymph, dims = 1:12)
+  seu_spleen_filt_lymph <- FindClusters(seu_spleen_filt_lymph, resolution = 0.8)
+
+  DimPlot(seu_spleen_filt_lymph, group.by = "Immgen_annot_single_main", label = T, repel = T) 
+  DimPlot(seu_spleen_filt_lymph, group.by = "MouseRNAseq_single_main", label = T, repel = T) 
+  
+  DimPlot(seu_spleen_filt_lymph, label = T, repel = T) 
+  
+```
+
+## Analysis of spleen clusters
+
+Annotations by diet
+
+```{r}
+
+seurat_meta_data <- seu_spleen_filt_lymph@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 5) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+#ggsave("fig/clusters_boxplots_spleen_filt_lymph_clusters.png", width = 20, height = 15, units = "cm")
+```
+
+## Markers spleen
+
+```{r eval=FALSE, include=TRUE}
+markers_spleen <- FindAllMarkers(seu_spleen_filt_lymph, logfc.threshold = log(2))
+
+markers_spleen %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+write.csv(markers_spleen, "markers_spleen.csv", row.names = T)
+```
+
+
+
+## Differentially expressed genes cluster 0 and cluster 3
+
+```{r eval=FALSE, include=TRUE}
+spl_cl1_vs_cl2 <- FindMarkers(seu_spleen_filt_lymph, ident.1 = 1, ident.2 = 2, only.pos = F)
+
+
+data.table(spl_cl1_vs_cl2) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+write.csv(spl_cl1_vs_cl2, "spl_cl1_vs_cl2.csv", row.names = T)
+
+```
+
+
+```{r fig.width=18, fig.height=12}
+
+FeaturePlot(seu_spleen_filt_lymph, features = c("Cd3d","Cd4","Cd8a","Sell","Ccl5",
+                                       "Foxp3","Il2ra","Pdcd1", "Cxcr5","Klrd1","Klrk1",
+                                       "Isg15","Srm","Klrg1", "Mki67"), ncol = 5)
+#ggsave("fig/markers1_seu_spleen_filt_lymph.png", width = 20, height = 11)
+
+FeaturePlot(seu_spleen_filt_lymph, features = c("Ifng","Tbx21","Eomes","Bcl6","Ccr8",
+                                       "Ccr10","Cxcr3","Tox", "Lag3","Ikzf2","Id2",
+                                       "Id3","Prdm1","Itgae", "Cd69"), ncol = 5)
+#ggsave("fig/markers2_seu_spleen_filt_lymph.png", width = 20, height = 11)
+
+FeaturePlot(seu_spleen_filt_lymph, features = c("Gata3","Rorc","Il23r","Cxcr6","Cd27",
+                                       "Entpd1","Izumo1r","Tnfrsf9", "Tnfrsf18","Tnfrsf14","Il17a",
+                                       "Gzma","Gzmb","Gzmk", "Gzmm"), ncol = 5)
+#ggsave("fig/markers3_seu_spleen_filt_lymph.png", width = 20, height = 11)
+
+
+```
+
+## Differential expression
+
+Differentially expressed genes between GFD and STD.
+
+By DeSeq spleen
+
+```{r fig.width=20, fig.height=30}
+sum_exp <- AggregateExpression(seu_spleen_filt_lymph, group.by = "MouseID", slot = "counts")
+
+md <- data.frame(Diet = c("GF", "GF", "GF", "GF", "GF", "STD", "STD", "STD", "STD"))
+
+# Create a DESeq dataset
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = sum_exp$RNA,
+                              colData = md,
+                              design= ~ Diet) 
+
+rownames(dds) <- rownames(sum_exp$RNA)
+
+# Run the DESeq2 algorithm, which will give us the differentially expressed genes
+dds <- DESeq(dds)
+
+```
+
+
+```{r fig.width=4, fig.height=4}
+## PCA
+pca = vst(dds, blind = FALSE)
+pca_plot <- plotPCA(pca, intgroup = c("Diet"))
+pca_plot
+```
+
+
+```{r}
+## Results data frame
+res <- results(dds)
+results <- as.data.frame(dplyr::mutate(as.data.frame(res), sig=ifelse(res$padj<0.05, "FDR<0.05", "Not Sig")), row.names=rownames(res))
+```
+
+Genes downregulated in STD
+
+```{r}
+results %>% filter(log2FoldChange < 0) %>%  arrange(pvalue) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+Genes upregulated in GFD
+
+```{r}
+results %>% filter(log2FoldChange > 0) %>%  arrange(pvalue) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+plotCounts(dds, gene="Slc16a5", intgroup="Diet")
+plotCounts(dds, gene="Itga4", intgroup="Diet")
+plotCounts(dds, gene="Stat3", intgroup="Diet")
+plotCounts(dds, gene="Il6st", intgroup="Diet")
+plotCounts(dds, gene="Adam17", intgroup="Diet")
+plotCounts(dds, gene="Klrd1", intgroup="Diet")
+plotCounts(dds, gene="Il18r1", intgroup="Diet")
+
+plotCounts(dds, gene="Stat", intgroup="Diet")
+plotCounts(dds, gene="Ccl4", intgroup="Diet")
+
+
+```
+
+# Pancreatic lymph node
+
+Read data from well 4 - pLN
+
+```{r}
+seu <- readRDS("G://48_lab/DATA_scRNAseq/Experiments_lab48/Exp11/04_Raw_data/Rds/exp11W4_init.rds")
+
+seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^mt-")
+seu[["percent.rt"]] <- PercentageFeatureSet(seu, pattern = "^Rp[ls]")
+
+# Remove TRAV, TRBV genes: blood young B6
+seu_annots <- seu@meta.data
+seu_counts <- seu[!(grepl('Trav', rownames(seu)) |
+          grepl('Trbv', rownames(seu)) |
+          grepl('mt-', rownames(seu)) |
+            grepl('Rpl', rownames(seu)) |
+          grepl('Rps', rownames(seu)) |
+          grepl('MGP-', rownames(seu)) 
+            ),]
+
+seu <- CreateSeuratObject(counts = seu_counts[["RNA"]]@counts, project = "seu", min.cells = 3, min.features = 200, meta.data = seu_annots)
+ seu <- NormalizeData(object = seu)
+  seu <- ScaleData(seu, verbose = FALSE)
+  seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  seu <- RunPCA(seu, npcs = 20, verbose = FALSE)
+  seu <- RunUMAP(seu, reduction = "pca", dims = 1:20)
+  seu <- FindNeighbors(seu, dims = 1:20)
+  seu <- FindClusters(seu, resolution = 0.9)
+
+ counts <- GetAssayData(seu[["RNA"]])
+
+seu_singler <- CreateSinglerObject(counts=counts,
+  project.name= "E07_Tregs", # choose
+  min.genes = 200, # ignore cells with fewer than 200 transcripts
+  technology = "10x", # choose
+  species = "Mouse",
+  citation = "Our 10x data exp 01-05", # choose
+  normalize.gene.length = FALSE,        # needed for full-length platforms (e.g. smartseq)
+  variable.genes = "de",  # see vignette
+  fine.tune = FALSE, # TRUE would take very long
+  reduce.file.size = TRUE, # leave out less-often used fields 
+  do.signatures = FALSE,
+  do.main.types = TRUE,
+  numCores = 16)
+
+
+seu <- AddMetaData(seu,
+seu_singler$singler[[1]]$SingleR.single$labels,
+                                 col.name = "Immgen_annot_single")
+seu <- AddMetaData(seu,
+seu_singler$singler[[1]]$SingleR.single.main$labels,
+                                 col.name = "Immgen_annot_single_main")
+seu <- AddMetaData(seu,
+seu_singler$singler[[2]]$SingleR.single.main$labels,
+                                 col.name = "MouseRNAseq_single_main")
+seu <- AddMetaData(seu,
+seu_singler$singler[[2]]$SingleR.single$labels,
+                                 col.name = "MouseRNAseq_single")
+
+
+DimPlot(seu, group.by = "Immgen_annot_single_main", label = T)
+
+seu_pLN <- seu
+
+
+
+DimPlot(seu, group.by = "Immgen_annot_single_main", raster = T, pt.size = 4, raster.dpi = c(900,900)) + ggtheme()
+ggsave("./fig/pLN_annotations.svg", width = 16, height = 12, units = "cm")
+
+seu_pLN$keep <- colnames(seu_pLN) %in% colnames(seu_pLN_filt)
+
+seu_pLN_filt <- subset(seu_pLN, nFeature_RNA > 750 & percent.mt < 7.5 & Immgen_annot_single_main %in% c("T cells", "NK cells", "NKT", "Tgd", "ILC"))
+
+
+
+DimPlot(seu_pLN, group.by = "keep", raster = T, pt.size = 3, , cols = c("red2","grey88"),
+        raster.dpi = c(900,900)) + ggtheme()
+ggsave("./fig/pLN_qc.svg", width = 16, height = 12, units = "cm")
+
+```
+
+
+## Add mouse information
+
+```{r}
+md_pLN <- seu_pLN@meta.data 
+md_pLN <- md_pLN %>% mutate(MouseID = str_replace_all(string = hashtags, pattern = "_Hashtag", replacement = ""))
+md_pLN <- md_pLN %>% mutate(Diet = if_else(MouseID %in% c("Mouse_1", "Mouse_2", "Mouse_3", "Mouse_4", "Mouse_5"), "GFD", "Standard"))
+
+seu_pLN@meta.data <- md_pLN
+
+DimPlot(seu_pLN, group.by = "MouseID")
+
+VlnPlot(seu_pLN, features = c("nCount_RNA","nFeature_RNA","percent.mt","percent.rt"), ncol = 2)
+
+DimPlot(seu_pLN, group.by = "Immgen_annot_single_main", label = T, repel = T) 
+DimPlot(seu_pLN, group.by = "MouseRNAseq_single_main", label = T, repel = T)
+
+```
+
+## Remove contaminating and low quality cells
+
+```{r}
+
+seu_pLN_filt <- subset(seu_pLN, nFeature_RNA > 750 & percent.mt < 7.5 & Immgen_annot_single_main %in% c("T cells", "NK cells", "NKT", "Tgd", "ILC"))
+
+seu_pLN_filt <- NormalizeData(object = seu_pLN_filt)
+  seu_pLN_filt <- ScaleData(seu_pLN_filt, verbose = FALSE)
+  seu_pLN_filt <- FindVariableFeatures(seu_pLN_filt, selection.method = "vst", nfeatures = 500, 
+                                       verbose = FALSE)
+  seu_pLN_filt <- RunPCA(seu_pLN_filt, npcs = 12, verbose = FALSE)
+  seu_pLN_filt <- RunUMAP(seu_pLN_filt, reduction = "pca", dims = 1:12)
+  seu_pLN_filt <- FindNeighbors(seu_pLN_filt, dims = 1:12)
+  seu_pLN_filt <- FindClusters(seu_pLN_filt, resolution = 0.7)
+
+  DimPlot(seu_pLN_filt, group.by = "Immgen_annot_single_main", label = T, repel = T) 
+  DimPlot(seu_pLN_filt, group.by = "MouseRNAseq_single_main", label = T, repel = T) 
+  
+  DimPlot(seu_pLN_filt, label = T, repel = T) 
+  
+  DimPlot(seu_pLN_filt, group.by = "Diet", label = T, repel = T) 
+  
+```
+
+## Markers pLN
+
+```{r eval=FALSE, include=TRUE}
+markers_pln <- FindAllMarkers(seu_pLN_filt, logfc.threshold = log(2))
+write.csv(markers_pln, "markers_pln.csv", row.names = F)
+
+data.table(markers_pln %>% rank_score_func %>% filter(avg_log2FC > 0) %>% group_by(cluster) %>% slice_max(order_by = score, n = 20)) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+## Differentially expressed genes cluster 0 and cluster 3
+
+```{r eval=FALSE, include=TRUE}
+pLN_cl0_vs_cl3 <- FindMarkers(seu_pLN_filt, ident.1 = 0, ident.2 = 3, only.pos = F)
+
+pLN_cl0_vs_cl3
+
+write.csv(pLN_cl0_vs_cl3, "pLN_cl0_vs_cl3.csv", row.names = T)
+
+data.table(pLN_cl0_vs_cl3) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+## Differential expression
+
+Differentially expressed genes between GFD and STD.
+
+By DeSeq spleen
+
+```{r fig.width=10, fig.height=12}
+sum_exp <- AggregateExpression(seu_spleen_filt_lymph, group.by = "MouseID", slot = "counts")
+
+md <- data.frame(Diet = c("GF", "GF", "GF", "GF", "GF", "STD", "STD", "STD", "STD"))
+
+# Create a DESeq dataset
+library(DESeq2)
+dds <- DESeqDataSetFromMatrix(countData = sum_exp$RNA,
+                              colData = md,
+                              design= ~ Diet) 
+
+rownames(dds) <- rownames(sum_exp$RNA)
+
+# Run the DESeq2 algorithm, which will give us the differentially expressed genes
+dds <- DESeq(dds)
+
+```
+
+
+```{r}
+## PCA
+pca = vst(dds, blind = FALSE)
+pca_plot <- plotPCA(pca, intgroup = c("Diet"))
+pca_plot
+```
+
+
+```{r}
+## Results data frame
+res <- results(dds)
+results <- as.data.frame(dplyr::mutate(as.data.frame(res), sig=ifelse(res$padj<0.05, "FDR<0.05", "Not Sig")), row.names=rownames(res))
+```
+
+Genes downregulated in STD
+
+```{r}
+p1 <- plotCounts(dds, gene="Mcpt8", intgroup="Diet")
+p2 <- plotCounts(dds, gene="Isg15", intgroup="Diet")
+p3 <- plotCounts(dds, gene="Gzmk", intgroup="Diet")
+p4 <- plotCounts(dds, gene="Ifng", intgroup="Diet")
+p5 <- plotCounts(dds, gene="Klrg1", intgroup="Diet")
+p6 <- plotCounts(dds, gene="Cd44", intgroup="Diet")
+p7 <- plotCounts(dds, gene="Klrk1", intgroup="Diet")
+p8 <- plotCounts(dds, gene="Stat3", intgroup="Diet")
+```
+
+
+```{r}
+results %>% filter(log2FoldChange > 1) %>%  arrange(pvalue) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+Genes upregulated in GFD
+
+```{r}
+results %>% arrange(log2FoldChange) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+
+
+```
+
+
+## Boxplot
+
+```{r}
+seurat_meta_data <- seu_pLN_filt@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 5) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+ #ggsave("fig/clusters_boxplots_pLN_filt_clusters.png", width = 18, height = 10, units = "cm")
+```
+
+## Annotations
+
+```{r fig.width=18, fig.height=12}
+
+FeaturePlot(seu_pLN_filt, features = c("Cd3d","Cd4","Cd8a","Sell","Ccl5",
+                                       "Foxp3","Il2ra","Pdcd1", "Cxcr5","Klrd1","Klrk1",
+                                       "Isg15","Srm","Klrg1", "Mki67"), ncol = 5)
+
+
+FeaturePlot(seu_pLN_filt, features = c("Ifng","Tbx21","Eomes","Bcl6","Ccr8",
+                                       "Ccr10","Cxcr3","Tox", "Lag3","Ikzf2","Id2",
+                                       "Id3","Prdm1","Itgae", "Cd69"), ncol = 5)
+
+```
+
+)
+# Merged spleen & pLN
+
+
+
+```{r}
+
+seu_spleen_filt_lymph$Tissue <- "Spleen"
+seu_pLN_filt$Tissue <- "pLN"
+
+ funda_merge <- merge(seu_spleen_filt_lymph, seu_pLN_filt)
+ funda_merge <- NormalizeData(object = funda_merge)
+  funda_merge <- ScaleData(funda_merge, verbose = FALSE)
+  funda_merge <- FindVariableFeatures(funda_merge, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  funda_merge <- RunPCA(funda_merge, npcs = 10, verbose = FALSE)
+  funda_merge <- RunUMAP(funda_merge, reduction = "pca", dims = 1:10)
+  funda_merge <- FindNeighbors(funda_merge, dims = 1:10)
+  funda_merge <- FindClusters(funda_merge, resolution = 1.1)
+  DimPlot(funda_merge, label = T)
+  
+
+  DimPlot(funda_merge, group.by = "Tissue") 
+  DimPlot(funda_merge, group.by = "Diet") 
+  
+  
+
+```
+
+```{r}
+funda_merge <- readRDS("./data/seu_merged_nod_mapping.rds")
+```
+
+```{r}
+DimPlot(funda_merge, group.by = "Immgen_annot_single_main", label = T, repel = T) 
+DimPlot(funda_merge, group.by = "MouseRNAseq_single_main", label = T, repel = T) 
+  
+DimPlot(funda_merge, label = T, repel = T) 
+  
+
+  
+funda_merge <- reduced_annot(funda_merge, "Immgen_annot_single", n_cells_to_other = 30)
+```
+
+
+```{r fig.width=20, fig.height=14}
+DimPlot(funda_merge, group.by = "Immgen_annot_single_red", label = T, repel = T) 
+ 
+```
+
+## Manual annotations of clusters
+
+```{r}
+DimPlot(funda_merge, label = T)
+```
+
+## Cluster markers
+
+```{r eval=FALSE, include=TRUE}
+mrk <- FindAllMarkers(funda_merge, logfc.threshold = log(1.5), min.diff.pct = 0.05)
+mrk <- rank_score_func(mrk) %>% arrange(cluster, desc(score))
+
+# write.csv(mrk, "funda_merge_clusters.csv")
+
+# Top 20 positive markers for each cluster
+data.table(mrk %>% group_by(cluster) %>% filter(avg_log2FC > 0) %>% slice_max(order_by = score, n = 20)) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+```{r}
+md <- funda_merge@meta.data
+
+md <- md %>% mutate(annotations_fine = recode(seurat_clusters, 
+                                                     "0" = "00 CD4 Naive 1",
+                                                     "1" = "01 CD8 Naive 1",
+                                                     "2" = "02 CD4 Naive 2",
+                                                     "3" = "03 CD4 Naive 3",
+                                                     "4" = "04 CD8 Naive 2",
+                                                     "5" = "05 CD4 Naive 4",
+                                                     "6" = "06 CD4 Naive 5",
+                                                     "7" = "07 CD4 Treg 1",
+                                                     "8" = "08 CD4 Treg 2",
+                                                     "9" = "09 Tgd and NKT ",
+                                                     "10" = "10 NK cells",
+                                                     "11" = "11 CD4 Tfh",
+                                                     "12" = "12 CD4 Egr Myb",
+                                                     "13" = "13 CD8 ISAGhi",
+                                                     "14" = "14 CD4 Early act. 41BB CD69",
+                                                     "15" = "15 CD8 AIMT",
+                                                     "16" = "16 Proliferating",
+                                                     "17" = "17 ILC",
+                                                     "18" = "18 CD8 Egr"))
+
+funda_merge@meta.data <- md
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+```
+
+
+```{r}
+
+
+DimPlot(funda_merge, group.by = "seurat_clusters", label = T, 
+        raster = T, pt.size = 15, raster.dpi = c(5000,5000)) + scale_color_manual(values = c(
+  "#b9ddf1", 
+  "#b3e0a6",
+  "#89b8da", 
+  "#6a9bc3", 
+  "#75bc69",
+  "#4878a6" ,
+  
+  "#92c0df",
+  "#F28E2B" ,
+  "#FFBE7D",
+  "#9D7660" ,
+  "#B07AA1" ,
+  
+  "#F1CE63",
+  "#499894"  ,
+  "#398949",
+  "#86BCB6" ,
+  "#24693d",
+  
+  "indianred2",
+  "#D4A6C8",
+  "slategray"),
+  labels = levels(md$annotations_fine))
+ggsave(filename = "fig/dimPlot_19clusters.png", width = 20, height = 13, units = "cm")
+
+ggsave(filename = "fig/dimPlot_19clusters.svg", width = 20, height = 13, units = "cm")
+
+
+
+```
+
+
+
+
+```{r}
+# saveRDS(seu_pLN_filt, "data/seu_pLN_filt_nod_mapping.rds")
+# saveRDS(seu_spleen_filt, "data/seu_spleen_filt_nod_mapping.rds")
+# saveRDS(funda_merge, "data/seu_merged_nod_mapping.rds")
+```
+
+```{r eval=FALSE, include=TRUE}
+#funda_merge <- readRDS("data/seu_merged_nod_mapping.rds")
+#seu_pLN_filt <- readRDS("data/seu_pLN_filt_nod_mapping.rds")
+#seu_spleen_filt <- readRDS("data/seu_spleen_filt_nod_mapping.rds")
+```
+
+```{r}
+funda_merge <- BuildClusterTree(
+  funda_merge,
+  dims = 1:10,
+  reorder = FALSE,
+  reorder.numeric = FALSE
+)
+
+tree <- funda_merge@tools$BuildClusterTree
+tree$tip.label <- levels(funda_merge$annotations_fine)
+
+p <- ggtree::ggtree(tree, aes(x, y)) +
+  scale_y_reverse() +
+  ggtree::geom_tree() +
+  ggtree::theme_tree() +
+  ggtree::geom_tiplab(offset = 1) +
+  ggtree::geom_tippoint(color = 
+                          c(
+  "#b9ddf1", 
+  "#b3e0a6",
+  "#89b8da", 
+  "#6a9bc3", 
+  "#75bc69",
+  "#4878a6" ,
+  
+  "#92c0df",
+  "#F28E2B" ,
+  "#FFBE7D",
+  "#9D7660" ,
+  "#B07AA1" ,
+  
+  "#F1CE63",
+  "#499894"  ,
+  "#398949",
+  "#86BCB6" ,
+  "#24693d",
+  
+  "indianred2",
+  "#D4A6C8",
+  "slategray"), shape = 16, size = 5) +
+  coord_cartesian(clip = 'off') +
+  theme(plot.margin = unit(c(0,2.5,0,0), 'cm'))
+
+p
+ggsave('plots/cluster_tree.png', p, height = 4, width = 4)
+ggsave('plots/cluster_tree.svg', p, height = 4, width = 4)
+```
+
+
+## Annotations coarse
+
+```{r}
+md <- funda_merge@meta.data
+md <- md %>% mutate(annotations_coarse = recode(seurat_clusters, 
+                                                     "0" = "CD4 Naive",
+                                                     "1" = "CD8 Naive",
+                                                     "2" = "CD4 Naive",
+                                                     "3" = "CD4 Naive",
+                                                     "4" = "CD8 Naive",
+                                                     "5" = "CD4 Naive",
+                                                     "6" = "CD4 Naive",
+                                                     "7" = "CD4 Treg",
+                                                     "8" = "CD4 Treg",
+                                                     "9" = "Tgd and NKT",
+                                                     "10" = "NK cells",
+                                                     "11" = "CD4 Treg",
+                                                     "12" = "CD4 Early activated",
+                                                     "13" = "CD8 Early activated",
+                                                     "14" = "CD4 Early activated",
+                                                     "15" = "CD8 AIMT",
+                                                     "16" = "Proliferating",
+                                                     "17" = "ILC",
+                                                     "18" = "CD8 Early activated"))
+
+funda_merge@meta.data <- md
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+
+DimPlot(funda_merge, group.by = "annotations_coarse", label = T, 
+        raster = T, pt.size = 15, raster.dpi = c(5000,5000)) + scale_color_manual(values = c(
+  "#6a9bc3", 
+  "#75bc69",
+  "#F28E2B" ,
+  "#9D7660" ,
+  "#B07AA1" ,
+  "#b9ddf1", 
+  "#b3e0a6",
+  "#24693d",
+  
+  "indianred2",
+  "#D4A6C8"))
+
+
+#ggsave(filename = "fig/dimPlot_10clusters.png", width = 20, height = 13, units = "cm")
+#ggsave(filename = "fig/dimPlot_10clusters.svg", width = 20, height = 13, units = "cm")
+
+```
+
+
+## Cluster abundance boxplot
+
+```{r fig.width=15, fig.height=16}
+funda_merge_spl <- subset(funda_merge, Tissue == "Spleen")
+```
+
+
+```{r fig.width=15, fig.height=16}
+seurat_meta_data <- funda_merge_spl@meta.data
+
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+df4 <- df4 %>% dplyr::select(-n)  %>% 
+ungroup   %>% 
+pivot_wider(names_from = "annotations_fine", values_from = "freq", values_fill = 0) 
+df4  <- left_join((nod.combined_filt@meta.data %>% dplyr::select(mouse_id_new) %>% unique), df3)
+df4[is.na(df4)] <- 0
+df4  <- df4  %>% pivot_longer(!mouse_id_new, values_to = "freq", names_to = "annotations_fine")
+
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Diet, labels = c("GFD","STD")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) +
+  facet_wrap(~annotations_fine, scales = "free") +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
+
+ ggsave("fig/clusters_boxplots_SPL.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
+ggsave("fig/clusters_boxplots_SPL.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
+
+```
+
+
+```{r fig.width=15, fig.height=16}
+funda_merge_pln <- subset(funda_merge, Tissue == "pLN")
+```
+
+
+```{r fig.width=15, fig.height=16}
+seurat_meta_data <- funda_merge_pln@meta.data
+
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Diet, labels = c("GFD","STD")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) +
+  facet_wrap(~annotations_fine, scales = "free") +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
+
+ ggsave("fig/clusters_boxplots_pLN.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
+ggsave("fig/clusters_boxplots_pLN.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
+
+
+```
+
+
+## Boxplots annotations coarse 
+
+```{r fig.width=15, fig.height=16}
+
+seurat_meta_data <- funda_merge@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_coarse) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  mutate(Tissue_Diet = paste(Tissue, Diet)) %>% 
+  ggplot(aes(x = Tissue_Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annotations_coarse, scales = "free") +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+# #ggsave("fig/clusters_boxplots.png", width = 25, height = 25, units = "cm")
+
+```
+
+```{r}
+
+seurat_meta_data <- funda_merge_spl@meta.data
+
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_coarse) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+df4 <- df4 %>% dplyr::select(-n)  %>% 
+ungroup   %>% 
+pivot_wider(names_from = "annotations_coarse", values_from = "freq", values_fill = 0) 
+df4  <- left_join((nod.combined_filt@meta.data %>% dplyr::select(mouse_id_new) %>% unique), df3)
+df4[is.na(df4)] <- 0
+df4  <- df4  %>% pivot_longer(!mouse_id_new, values_to = "freq", names_to = "annotations_coarse")
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Diet, labels = c("GFD","STD")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) +
+  facet_wrap(~annotations_coarse, scales = "free", ncol = 5) +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
+
+ ggsave("fig/clusters_boxplots_SPL_coarse.png", width = 25, height = 16, units = "cm", limitsize = FALSE)
+ggsave("fig/clusters_boxplots_SPL_coarse.svg", width = 25, height = 16, units = "cm", limitsize = FALSE)
+```
+
+
+```{r}
+seurat_meta_data <- funda_merge_pln@meta.data
+
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, annotations_coarse) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+df4 <- df4 %>% dplyr::select(-n)  %>% 
+ungroup   %>% 
+pivot_wider(names_from = "annotations_coarse", values_from = "freq", values_fill = 0) 
+df4  <- left_join((seurat_meta_data %>% dplyr::select(MouseID) %>% unique), df4)
+df4[is.na(df4)] <- 0
+df4  <- df4  %>% pivot_longer(!MouseID, values_to = "freq", names_to = "annotations_coarse")
+
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Diet, labels = c("GFD","STD")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) +
+  facet_wrap(~annotations_coarse, scales = "free") +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
+
+ ggsave("fig/clusters_boxplots_pLN_coarse.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
+ggsave("fig/clusters_boxplots_pLN_coarse.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
+
+```
+
+# Annotations coarse 2 v06
+
+```{r}
+
+md <- funda_merge@meta.data
+
+md <- md %>% mutate(annotations_fine = recode(seurat_clusters, 
+                                                     "0" = "CD4 Naive",
+                                                     "1" = "CD8 Naive",
+                                                     "2" = "CD4 Naive",
+                                                     "3" = "CD4 Naive",
+                                                     "4" = "CD8 Naive",
+                                                     "5" = "CD4 Naive",
+                                                     "6" = "CD4 Naive",
+                                                     "7" = "CD4 Treg and Tfh",
+                                                     "8" = "CD4 Treg and Tfh",
+                                                     "9" = "Tgd and NKT ",
+                                                     "10" = "NK cells",
+                                                     "11" = "CD4 Treg and Tfh",
+                                                     "12" = "CD4 Egr Myb",
+                                                     "13" = "CD8 ISAGhi",
+                                                     "14" = "CD4 Early act. 41BB CD69",
+                                                     "15" = "CD8 AIMT",
+                                                     "16" = "Proliferating",
+                                                     "17" = "ILC",
+                                                     "18" = "CD8 Egr"))
+
+funda_merge@meta.data <- md
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+```
+
+
+```{r}
+DimPlot(funda_merge, group.by = "annotations_fine", label = T, 
+        raster = T, pt.size = 15, raster.dpi = c(5000,5000)) + scale_color_manual(values = c(
+  "#6a9bc3", # CD4 Naive
+  "#b3e0a6", # CD8 Naive
+  
+ # "#F28E2B" ,
+  "#F28E2B", #Treg
+  "#9D7660" , #
+  "#B07AA1" ,
+  
+  "#b9ddf1", # "#F1CE63",
+"#24693d",
+   "dodgerblue4",
+  "#86BCB6" ,
+  
+  "indianred2",
+ "#D4A6C8", 
+   "#499894"  ,
+ 
+  "slategray"))
+
+
+
+ggsave(filename = "figv06/dimPlot_12clusters.png", width = 20, height = 13, units = "cm")
+ggsave(filename = "figv06/dimPlot_12clusters.svg", width = 20, height = 13, units = "cm")
+
+```
+
+
+# 12 clusters heatmap
+
+## Cluster markers
+
+```{r fig.width = 12, fig.height=4}
+markers  <- str_to_sentence(rev(c("TRAC","TRBC1","CD3D","CD4",
+                                  "CCR7","SELL",  "TCF7", "LEF1", "IL7R",
+                                  "MYC","CD69","TNF","TNFRSF9",
+                                  "FOXP3","CTLA4","IL2RA","IL10","CD44",
+                                  "CD8A","Isg15","Ifit1","Irf7",
+                                  "CXCR3","IL2RB","EOMES","Cd160","Id2",
+                                  "TRDC","TRGV2","Cxcr6","Ifng","Xcl1","Kit",
+                                  "GZMB","CX3CR1",
+                                  "TBX21","KLRG1","KLRK1",
+                                  "NCR1","GZMA",
+                                  "Fcer1g",
+                                  "KLRB1A",
+                              "MKI67", "MCM6","CDC6","CDK1"
+                  )))
+
+
+avgexp = AverageExpression(funda_merge, features = markers,
+                           return.seurat = F, group.by = "annotations_fine", 
+                          assay = "RNA")
+
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+pheatmap(t(avgexp$RNA)[c(1,6,8,3,2,7,12,9,4,11,5,10),], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+```
+
+
+
+```{r}
+setwd("G:/48_lab/Project scRNAseq/Scripts Verca/2022-10-17_Funda_NOD/")
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+pheatmap(t(avgexp$RNA)[c(1,6,8,3,2,7,12,9,4,11,5,10),], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+        filename = "figv06/heatmap_annotations_v06.pdf",
+        width = 6, height = 2.2, 
+                  fontsize = 9)
+
+```
+
+# Split by mouse ID 
+
+```{r fig.width=20}
+funda_merge$MouseID %>% table
+
+DimPlot(funda_merge, split.by = "MouseID", group.by = "Diet", cols = c("dodgerblue","indianred2"))
+
+funda_merge$study <- "Funda"
+library(RColorBrewer)
+
+funda_merge@meta.data %>% group_by(MouseID, Tissue, study) %>% tally %>% 
+  ggplot(aes(x = Tissue, y = n, fill = MouseID, label = n)) + geom_bar(position="stack", stat="identity") + coord_flip() +
+  geom_text(size = 5, position = position_stack(vjust = 0.5)) + theme_classic() + ggtheme() +
+  scale_fill_manual(values = c(brewer.pal(n = 5, name = "Blues"),brewer.pal(n = 5, name = "Reds")))
+
+ggsave(filename = "./figv06/mouse_id_counts.svg", width = 32, height = 6, units = "cm")
+
+```
+
+# Boxplots annotations coarse tissue
+
+```{r}
+
+DimPlot(funda_merge,  group.by = "Tissue", cols = c("#5fd3bcff","#4a6ca3ff"), shuffle = T, pt.size = 2)
+
+
+DimPlot(funda_merge,  group.by = "Tissue", cols = c("#5fd3bcff","#4a6ca3ff"), shuffle = T, 
+        raster = T, pt.size = 10, raster.dpi = c(2500,2500)) 
+ggsave(filename = "fig/dimPlot_tissue.png", width = 16, height = 13, units = "cm")
+ggsave(filename = "fig/dimPlot_tissue.svg", width = 16, height = 13, units = "cm")
+```
+
+
+```{r}
+seurat_meta_data <- funda_merge@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Tissue, labels = c("pLN", "SPL")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Tissue), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Tissue)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_color_manual(values = c("#5fd3bcff","#4a6ca3ff")) + 
+  scale_fill_manual(values = c("#5fd3bcff","#4a6ca3ff")) +
+  facet_wrap(~annotations_fine, scales = "free", ncol = 6) +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
+
+ ggsave("figv06/clusters_boxplots_tissue.png", width = 25, height = 12, units = "cm", limitsize = FALSE)
+ggsave("figv06/clusters_boxplots_tissue.svg", width = 25, height = 12, units = "cm", limitsize = FALSE) 
+
+```
+
+
+# Clonal expansion
+## Clone abundance
+
+```{r}
+metadata_6 <- funda_merge@meta.data
+rownames(metadata_6) <- colnames(funda_merge)
+
+metadata_6 <- metadata_6 %>% mutate(
+  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
+  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
+)
+
+clone_table <- metadata_6 %>%
+  dplyr::group_by(factor(clone_aa)) %>%
+          dplyr::summarize(n = n(), sum = sum()) %>%
+    arrange(desc(n))
+
+clone_table
+```
+
+
+```{r}
+metadata_6$test <- 0
+metadata_6 <- metadata_6 %>% group_by(test, clone_aa) %>% mutate(clone_abundance = as.numeric(n()))
+
+
+metadata_6 <- as.data.frame(metadata_6 %>% mutate(clone_abundance = as.numeric(ifelse(clone_abundance==1056,NA_integer_,clone_abundance))) %>%
+  mutate(log_clone_abundance = log(clone_abundance, base = 2)))
+rownames(metadata_6) <- colnames(funda_merge)
+
+funda_merge@meta.data <- metadata_6
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+funda_merge <- AddMetaData(funda_merge, as.numeric(metadata_6$clone_abundance), "clone_abundance")
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+FeaturePlot(funda_merge, reduction = "umap", features = "log_clone_abundance")
+
+FeaturePlot(subset(funda_merge, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
+
+#ggsave("fig/Log2CloneAbundance.png", width = 13, height = 8, units = "cm", dpi = 120)
+#ggsave("fig/Log2CloneAbundance.svg", width = 13, height = 8, units = "cm", dpi = 120)
+
+# Clone abundance bar graph
+metadata_6 <- metadata_6 %>%
+  mutate( clone_abundance_group = case_when(clone_abundance==5 ~ "5",
+                                            clone_abundance==4 ~ "4",
+                                            clone_abundance==3 ~ "3",
+                                            clone_abundance==2 ~ "2",
+                                            clone_abundance==1 ~ "1",
+                                            TRUE ~ "0"
+                                            ),
+          clone_abundance_isNA = if_else(clone_abundance %in% c(1:5), "1", "0")) 
+
+metadata_6 %>% 
+  ggplot(aes(x = annotations_fine)) + 
+  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
+  coord_flip() +
+  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), 
+        legend.position="right", 
+        panel.border = element_blank(), 
+        legend.title = element_blank()) + 
+  ggtitle("Clone abundance in clusters")
+
+
+```
+
+
+```{r}
+## TCR detection
+
+metadata_6 %>% 
+  ggplot(aes(x = factor(annotations_fine, levels =  rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
+  geom_bar(aes(fill = factor(clone_abundance_isNA)), position = "fill") + 
+  coord_flip() +
+  scale_fill_manual(values = c("grey80", "#c6e9afff")) + xlab("Frequency")+
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), 
+        legend.position="right", 
+        panel.border = element_blank(), 
+        legend.title = element_blank()) + 
+  ggtitle("TCR detection in clusters")
+
+ggsave("figv06/TCR_Detection_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
+ggsave("figv06/TCR_Detection_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
+
+```
+
+
+
+```{r}
+
+metadata_6$clone_abundance_group
+### Clonal abundance
+ metadata_6 %>% 
+  filter(clone_abundance_isNA == 1) %>% 
+  ggplot(aes(x = factor(annotations_fine, levels = rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
+  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
+   coord_flip() +
+  scale_fill_manual(values = c("#eff3ffff", "#bdd7e7ff", "#6baed6ff",
+                               "#ce7072ff", "#9c080dff")) + xlab("Frequency")+
+  xlab("Frequency") +
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position="right", panel.border = element_blank(), legend.title = element_blank()) + 
+  ggtitle("Clone abundance in clusters") + 
+  ggtheme()
+
+ ggsave("figv06/Log2CloneAbundance_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
+ ggsave("figv06/Log2CloneAbundance_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
+
+```
+
+```{r}
+
+DimPlot(funda_merge, cells.highlight = colnames(subset(funda_merge, cdr3_A1 == "CVVGDRGSALGRLHF")))
+ggsave(filename = "figv06/dimPlot_iNKT.png", width = 17.5, height = 13, units = "cm")
+ggsave(filename = "figv06/dimPlot_iNKT.svg", width = 17.5, height = 13, units = "cm")
+
+```
+
+## Markers table
+
+```{r}
+Idents(funda_merge) <- funda_merge$annotations_fine
+
+mrk <- FindAllMarkers(funda_merge, only.pos = T)
+```
+
+```{r}
+mrk
+write.csv(mrk, "240805_markers.csv")
+```
+
+```{r}
+DimPlot(funda_merge, group.by = "seurat_clusters")
+
+Idents(funda_merge) <- funda_merge$seurat_clusters
+```
+
+```{r}
+mrk2 <- FindAllMarkers(funda_merge)
+write.csv(mrk2, "240615_markers2.csv")
+
+```
+
+
+## Boxplots diet
+
+```{r fig.width=15, fig.height=5}
+seurat_meta_data <- funda_merge@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_coarse) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) %>% 
+  dplyr::select(-n)  %>%
+ungroup   %>%
+pivot_wider(names_from = "annotations_coarse", values_from = "freq", values_fill = 0) %>% 
+  pivot_longer(!MouseID_tissue, names_to = "annotations_coarse", values_to = "freq")
+
+df4
+```
+
+### pLN
+
+```{r fig.width=15, fig.height=5}
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  dplyr::filter(Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(fill = Diet), shape = 21) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(annotations_coarse, levels = levels(factor(metadata_6$annotations_coarse))[c(1,6,8,3,2,7,12,9,4,11,5,10)]), scales = "free", ncol = 12) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 20),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 20)) + 
+  ylim(0,NA) +
+  ylab("") +
+  xlab("") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") 
+
+ ggsave("figv06/clusters_boxplots_diet_pLN2.png", width = 48, height = 10, units = "cm", limitsize = FALSE)
+ggsave("figv06/clusters_boxplots_diet_pLN2.svg", width = 48, height = 10, units = "cm", limitsize = FALSE) 
+
+library(ggpubr)
+df5 <- df4 %>% 
+  dplyr::filter(Tissue == "pLN") 
+compare_means(freq ~ Diet, data = df5, 
+              group.by = "annotations_coarse",
+              method = "t.test")
+
+
+compare_means(freq ~ Diet, data = df5, 
+              group.by = "annotations_coarse")
+
+write.csv(df5, "pLN_freq.csv")
+```
+
+### Spleen
+
+```{r fig.width=15, fig.height=5}
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# The final plot
+df4 %>% 
+  dplyr::filter(Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(fill = Diet), shape = 21) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(annotations_coarse, levels = levels(factor(metadata_6$annotations_coarse))[c(1,6,8,3,2,7,12,9,4,11,5,10)]), scales = "free", ncol = 12) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90)) +
+theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 20),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 20)) + 
+  ylim(0,NA) +
+  ylab("") +
+  xlab("") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") 
+
+ggsave("figv06/clusters_boxplots_diet_SPL2.png", width = 48, height = 10, units = "cm", limitsize = FALSE)
+ggsave("figv06/clusters_boxplots_diet_SPL2.svg", width = 48, height = 10, units = "cm", limitsize = FALSE) 
+
+
+library(ggpubr)
+df5 <- df4 %>% 
+  dplyr::filter(Tissue == "Spleen") 
+compare_means(freq ~ Diet, data = df5, 
+              group.by = "annotations_coarse",
+              method = "t.test")
+
+
+compare_means(freq ~ Diet, data = df5, 
+              group.by = "annotations_coarse")
+
+write.csv(df5, "SPL_freq.csv")
+
+```
+
+# DE GFD vs GTD
+
+```{r}
+DimPlot(funda_merge, group.by = "Diet", cols = c("#92c0df", "indianred3"), shuffle = T)
+
+
+metadata_6 %>% 
+  ggplot(aes(x = factor(annotations_fine, levels =  rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
+  geom_bar(aes(fill = factor(Diet)), position = "fill") + 
+  coord_flip() +
+  scale_fill_manual(values = c("dodgerblue", "indianred2")) + xlab("Frequency")+
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), 
+        legend.position="right", 
+        panel.border = element_blank(), 
+        legend.title = element_blank()) + 
+  ggtitle("TCR detection in clusters")
+
+
+
+```
+
+
+
+
+```{r}
+Idents(funda_merge) <- funda_merge$Diet
+
+
+mrk_de_whole_data <- FindAllMarkers(funda_merge, only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+mrk_de_whole_data
+
+
+mrk_de_whole_data %>% filter(cluster == "Standard") %>% nrow
+```
+
+Spleen vs pLN
+
+```{r}
+funda_merge$Tissue %>% table
+mrk_de_pLN <- FindAllMarkers(subset(funda_merge, Tissue == "pLN"), only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+mrk_de_spl <- FindAllMarkers(subset(funda_merge, Tissue == "Spleen"), only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+
+mrk_de_pLN
+mrk_de_spl
+
+dir.create("tables")
+write.csv(mrk_de_whole_data, "tables/mrk_de_whole_data.csv")
+write.csv(mrk_de_pLN, "tables/mrk_de_pLN.csv")
+write.csv(mrk_de_spl, "tables/mrk_de_spl.csv")
+
+```
+
+
+```{r}
+library(ggVennDiagram)
+library(gplots)
+```
+
+
+```{r}
+x_gfd <- list(
+  pLN = mrk_de_pLN %>% dplyr::filter(cluster == "GFD") %>% pull(gene), 
+  SPL = mrk_de_spl %>% dplyr::filter(cluster == "GFD") %>% pull(gene)) 
+ ggVennDiagram(x_gfd)
+  ggsave("figs/venn_gfd.svg", width = 10, height = 6, units = "cm")
+
+ 
+ v.table <- venn(x_gfd)
+ print(v.table)
+```
+
+```{r}
+x_std <- list(
+  pLN = mrk_de_pLN %>% dplyr::filter(cluster == "Standard") %>% pull(gene), 
+  Spl = mrk_de_spl %>% dplyr::filter(cluster == "Standard") %>% pull(gene)) 
+ ggVennDiagram(x_std)
+ ggsave("figs/venn_std.svg", width = 10, height = 6, units = "cm")
+ v.table <- venn(x_std)
+
+    print(v.table)
+```
+
+
+```{r}
+library(ensembldb)
+library(EnsDb.Mmusculus.v79)
+
+geneIDs1 <- ensembldb::select(EnsDb.Mmusculus.v79, keys= mrk_de_whole_data$gene, 
+                              keytype = "SYMBOL", columns = c("SYMBOL","ENTREZID"))
+
+colnames(geneIDs1)  <- c("gene", "entrezid")
+
+geneIDs1
+
+all_markers2  <- mrk_de_whole_data  %>% 
+                     left_join(geneIDs1) 
+
+all_markers2
+```
+
+## Heatmap all DE genes
+
+```{r fig.width = 20, fig.height = 4}
+avgexp = AverageExpression(funda_merge, features = rev(mrk_de_whole_data$gene),
+                           return.seurat = F, group.by = "MouseID", 
+                          assay = "RNA")
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+
+
+
+pheatmap(t(avgexp$RNA), main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+```
+
+
+### v02
+```{r}
+pheatmap(t(avgexp$RNA), main = "",
+         scale = "column", cluster_cols = F, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+         filename = "plots/heatmap_DEgenes_whole_dataset.pdf",
+          
+         width = 20, height = 4,
+                  fontsize = 9)
+```
+
+
+### v03
+
+```{r}
+unique(mrk_de_whole_data$gene)
+
+genes_selection <- c("S100a6", "Lef1","Irf7","Lck","Lat","Id3", "Myc", "Itgb2", "Il21r", "Ptpn6","Cd40lg",        "Ifngr1",
+"Foxp3","Ly6a", "Usp18","Klrd1","Ifi27","Isg15" ,"Foxo1","Bcl2","Epsti1","Slamf6","Il18r1")
+
+
+rownames(avgexp$RNA)
+```
+
+```{r}
+genes_selection <- c("Lef1","Irf7","Lck","Lat","Id3", "Myc",  "Cd40lg", "Ifngr1",
+"Foxp3","Ly6a", "Usp18","Klrd1","Ifi27","Isg15" ,"Foxo1","Epsti1","Slamf6","Il18r1","Ddit4","Sgk1")
+
+```
+
+
+```{r}
+library(ComplexHeatmap)
+library(circlize)
+
+ha = rowAnnotation(foo = anno_mark(at = which(rownames(avgexp$RNA) %in% genes_selection), 
+    labels = rownames(avgexp$RNA)[which(rownames(avgexp$RNA) %in% genes_selection)]))
+
+
+scaled_m <- scale(t(avgexp$RNA))
+
+library(colorspace)
+Heatmap(t(scaled_m), col = colorRamp2(c(-2, 0, 2), c("dodgerblue", "white", "indianred2")), 
+    name = "scaled_expr", 
+    show_column_names = TRUE, width = unit(8, "cm"), right_annotation = ha, show_row_names = FALSE) 
+
+pdf("./figs/heatmap_gfd_vs_std.pdf", width = 3, height = 5)
+Heatmap(t(scaled_m), col = colorRamp2(c(-2, 0, 2), c("dodgerblue", "white", "indianred2")), 
+    name = "scaled_expr", 
+    show_column_names = TRUE, width = unit(8, "cm"), right_annotation = ha, show_row_names = FALSE) 
+dev.off()
+
+```
+
+
+## GSEA
+
+```{r}
+gsea_upGFD  <- all_markers2  %>% 
+                        dplyr::filter(!is.na(entrezid) & cluster == "GFD")  %>% 
+                        group_by(entrezid, avg_log2FC)  %>% 
+                        tally()  %>% 
+                        arrange(desc(n))  %>% 
+                        pull(entrezid)
+gsea_upGFD
+
+gsea_upSTD  <- all_markers2  %>% 
+                        dplyr::filter(!is.na(entrezid) & cluster == "Standard")  %>% 
+                        group_by(entrezid, avg_log2FC)  %>% 
+                        tally()  %>% 
+                        arrange(desc(n))  %>% 
+                        pull(entrezid)
+
+gsea_upSTD
+```
+
+
+```{r}
+library(msigdbr)
+
+immune_genes <- immune_genes <- msigdbr(species = "Mus musculus", category = "C7") %>% 
+  dplyr::select(gs_name, entrez_gene)
+head(immune_genes)
+
+
+which(all_markers2$entrezid %in% immune_genes)
+
+all_markers2$gene[which(all_markers2$entrezid %in% immune_genes$entrez_gene)]
+
+```
+
+
+
+```{r}
+geneList_nod <- all_markers2 %>% filter(!is.na(entrezid) & cluster == "GFD")
+write.csv(geneList_nod, "geneList_nod.csv")
+
+
+geneList_nod <- all_markers2 %>% filter(!is.na(entrezid) & cluster == "Standard")
+write.csv(geneList_nod, "geneList_nod_std.csv")
+
+
+geneList_nod_vector <- geneList_nod$avg_log2FC
+names(geneList_nod_vector) <- geneList_nod$entrezid
+
+geneList_nod_vector <- geneList_nod_vector[rev(order(geneList_nod_vector))]
+geneList_nod_vector
+
+
+edo2 <- gseDO(geneList_nod_vector)
+
+p1 <- gseaplot(edo2, geneSetID = 1, by = "runningScore", title = edo2$Description[1])
+
+
+em2 <- GSEA(geneList_nod_vector, TERM2GENE = immune_genes)
+em %>% as.data.frame()
+
+
+mutate(em, qscore = -log(p.adjust, base=10)) %>% 
+    barplot(x="qscore")
+
+dotplot(em, showCategory=20) + ggtitle("dotplot for ORA")
+```
+
+```{r}
+em <- enricher(gsea_upSTD, TERM2GENE=immune_genes)
+head(em)
+em %>% as.data.frame()
+
+gsea_upSTD
+
+dotplot(em, showCategory=20) + ggtitle("dotplot for ORA")
+
+
+
+```
+
+
+```{r}
+
+all_markers2
+gsea_upSTD  <- all_markers2  %>% 
+                        dplyr::filter(!is.na(entrezid) & cluster == "Standard")  %>% 
+                        group_by(entrezid, avg_log2FC)  %>% 
+                        tally()  %>% 
+                        arrange(desc(n))  %>% 
+                        pull(entrezid)
+gsea_upSTD
+
+
+ego2 <- enrichGO(gene          = gsea_upSTD,
+                OrgDb         = org.Mm.eg.db,
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+        readable      = TRUE)
+
+
+head(ego2)
+
+ego2 %>% as.data.frame
+```
+
+
+## GSEA traditional
+
+Get fold changes using marker testing with unlimited thresholds.
+
+```{r}
+Idents(funda_merge) %>% table
+
+fc.diet <- FindAllMarkers(funda_merge, test.use = "wilcox", logfc.threshold = -Inf, only.pos = F, pseudocount.use = 10^-3, min.cells.feature = 1, min.pct = -Inf, return.thresh = 1)
+```
+
+Prepare a list with immune pathways.
+
+```{r}
+c7.pathways <- msigdbr(species = "Mus musculus", category = "C7")
+c7.pathways.names <- levels(factor(c7.pathways$gs_name))
+
+
+fct_generate_pathway <- function(i){
+  pathway <- c7.pathways %>% dplyr::filter(gs_name == c7.pathways.names[i])
+  pathway_vector <- c(c7.pathways.names[i], pull(pathway, "gene_symbol"))
+}
+
+pathways <- map(.x = 1:length(c7.pathways.names), .f = fct_generate_pathway)
+
+pathways
+
+pathways2 <- list()
+
+for(i in 1:length(c7.pathways.names)){
+  pathways2[[i]] <- pathways[[i]][2:length(pathways[[i]])]
+  names(pathways2)[i] <- pathways[[i]][1]
+}
+
+```
+
+
+Get fold changes for GFD vs STD. Calculate fGSEA for all pathways.
+
+```{r fig.height = 13, fig.width=20}
+
+fc.diet.gfd <- fc.diet %>% filter(cluster == "GFD")
+fc.diet.gfd <- data.frame(avg_logFC = fc.diet.gfd$avg_log2FC, gene = fc.diet.gfd$gene)
+fc.genes <- as.vector(fc.diet.gfd$gene)                                
+
+fc.entrezids <- AnnotationDbi::select(org.Mm.eg.db, 
+       keys = fc.genes,
+       columns = c("ENTREZID", "SYMBOL"),
+       keytype = "SYMBOL")
+
+fc.diet.gfd$entrezid <- fc.entrezids$ENTREZID
+
+fc.diet.gfd
+
+
+fc.input <- as.numeric(fc.diet.gfd$avg_logFC)
+names(fc.input) <- fc.diet.gfd$gene
+
+
+fgseaRes.gfd <- fgsea(pathways = pathways2, 
+                  stats    = fc.input)
+
+fgseaRes.gfd %>% arrange(pval)
+
+fgseaRes.gfd.signif <- fgseaRes.gfd %>% filter(padj < 0.05)
+
+
+fgseaRes.gfd.signif %>% arrange(pval)
+
+
+fgseaRes.gfd.signif %>% 
+  mutate(pathway = fct_reorder(pathway, NES, .fun='median')) %>%
+  ggplot(aes(x = NES, y = pathway)) +
+  geom_point(aes(size = size, color = padj)) + 
+  scale_color_gradient(low = "red2", high = "lightblue") + 
+  theme_classic() +
+  theme(axis.ticks.y = element_blank()) + ggtheme()
+ggsave(filename = "figs/pathway_plot_big.png", width = 35, height = 28, units = "cm")
+ggsave(filename = "figs/pathway_plot_big.svg", width = 35, height = 28, units = "cm")
+
+
+ggsave(filename = "figs/pathway_plot_small.png", width = 35, height = 10, units = "cm")
+
+
+
+```
+
+
+```{r}
+#  GSE14415_INDUCED_TREG_VS_TCONV_UP
+
+fgsea_2 <- fgsea(pathways = list(our_list = pathways2$GSE14415_INDUCED_TREG_VS_TCONV_UP), 
+                                      stats    = fc.input)
+p1 <- plotEnrichment(pathways2$GSE14415_INDUCED_TREG_VS_TCONV_UP, fc.input) + ylim(-0.1, 0.55) +  labs(title="\nGSE14415_INDUCED_TREG_VS_TCONV_UP", 
+    subtitle = paste0("p-value = ",format.pval(fgsea_2$pval, digits = 2)))
+p1
+
+
+#  GSE28726_NAIVE_VS_ACTIVATED_CD4_TCELL_DN
+
+fgsea_2 <- fgsea(pathways = list(our_list = pathways2$GSE28726_NAIVE_VS_ACTIVATED_CD4_TCELL_DN), 
+                                      stats    = fc.input)
+p2 <- plotEnrichment(pathways2$GSE28726_NAIVE_VS_ACTIVATED_CD4_TCELL_DN, fc.input) + ylim(-0.1, 0.55) + labs(title="\n GSE28726_NAIVE_VS_ACTIVATED_CD4_TCELL_DN", 
+    subtitle = paste0("p-value = ",format.pval(fgsea_2$pval, digits = 2)))
+p2
+
+#  GOLDRATH_NAIVE_VS_EFF_CD8_TCELL_DN
+
+fgsea_2 <- fgsea(pathways = list(our_list = pathways2$GOLDRATH_NAIVE_VS_EFF_CD8_TCELL_DN), 
+                                      stats    = fc.input)
+p3 <- plotEnrichment(pathways2$GOLDRATH_NAIVE_VS_EFF_CD8_TCELL_DN, fc.input) + ylim(-0.1, 0.55) + labs(title="\n GOLDRATH_NAIVE_VS_EFF_CD8_TCELL_DN", 
+    subtitle = paste0("p-value = ",format.pval(fgsea_2$pval, digits = 2)))
+p3
+
+cowplot::plot_grid(p1, p2, p3, ncol = 1)
+ggsave(filename = "figs/gsea.svg", width = 10, height = 20, units = "cm")
+
+```
+
+
+# DE genes in cell types
+
+```{r}
+DimPlot(funda_merge, group.by = "annotations_coarse")
+Idents(funda_merge) %>% table
+Idents(funda_merge) <- funda_merge$Diet
+
+for(i in 1:10){
+  
+  annot = levels(factor(funda_merge$annotations_coarse))[i]
+  seusubset <- subset(funda_merge, annotations_coarse == annot)
+  df_one_sample <- FindAllMarkers(seusubset, only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+  
+  if(nrow(df_one_sample)>0){
+  df_one_sample$annotations_coarse <- annot
+  
+      if(i == 1){
+      df_all <- df_one_sample
+    } else {
+      df_all <- rbind(df_all, df_one_sample)
+      }
+    }
+  
+
+}
+
+df_all$annotations_coarse %>% table
+
+df_all
+
+df_all_filt <- df_all %>% filter(p_val_adj < 0.2)
+
+df_all_filt
+```
+
+
+```{r}
+options(repr.plot.height = 40, repr.plot.width = 10)
+df_all_filt  %>% 
+ggplot(aes(x = factor(gene), y = annotations_coarse)) + 
+  geom_point(aes(size = -log(p_val_adj, base = 10), colour = cluster)) + 
+  theme_bw()  + scale_size_continuous(range=c(1,4)) +
+  #scale_colour_gradient2(low = "lightskyblue", mid = "lightsteelblue2", high = "salmon") + 
+ theme(axis.text.x = element_text(angle = 90))
+```
+
+# DE pLN vs SPL
+
+```{r}
+
+DimPlot(funda_merge, group.by = "annotations_coarse")
+Idents(funda_merge) %>% table
+Idents(funda_merge) <- funda_merge$Diet
+
+for(i in 1:2){
+  
+  annot = levels(factor(funda_merge$Tissue))[i]
+  seusubset <- subset(funda_merge, Tissue == annot)
+  df_one_sample <- FindAllMarkers(seusubset, only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+  
+  if(nrow(df_one_sample)>0){
+  df_one_sample$Tissue <- annot
+  
+      if(i == 1){
+      df_all <- df_one_sample
+    } else {
+      df_all <- rbind(df_all, df_one_sample)
+      }
+    }
+  
+
+}
+
+df_all$Tissue %>% table
+
+df_all
+
+df_all_filt <- df_all %>% filter(p_val_adj < 0.2)
+
+df_all_filt
+```
+
+
+```{r}
+options(repr.plot.height = 40, repr.plot.width = 10)
+df_all_filt  %>% 
+ggplot(aes(x = factor(gene), y = Tissue)) + 
+  geom_point(aes(size = -log(p_val_adj, base = 10), colour = cluster)) + 
+  theme_bw()  + scale_size_continuous(range=c(1,4)) +
+  #scale_colour_gradient2(low = "lightskyblue", mid = "lightsteelblue2", high = "salmon") + 
+ theme(axis.text.x = element_text(angle = 90))
+```
+
+
+```{r}
+gfd_up_spl <- df_all %>% filter(cluster == "GFD" & Tissue == "Spleen") %>% pull(gene)
+
+gfd_down_spl <- df_all %>% filter(cluster == "Standard" & Tissue == "Spleen") %>% pull(gene)
+
+gfd_up_pln <- df_all %>% filter(cluster == "GFD" & Tissue == "pLN") %>% pull(gene)
+
+gfd_down_pln <- df_all %>% filter(cluster == "Standard" & Tissue == "pLN") %>% pull(gene)
+
+
+genes_up <- list(
+  gfd_up_spl,
+  gfd_up_pln)
+
+
+genes_down <- list(
+  gfd_down_spl,
+  gfd_down_pln)
+
+library("ggVennDiagram")
+
+ggVennDiagram(genes_up)
+ggVennDiagram(genes_down)
+
+venn_up <- VennDiagram::get.venn.partitions(genes_up)
+venn_down <- VennDiagram::get.venn.partitions(genes_down)
+
+
+venn_up$..values..$`1`
+venn_up$..values..$`2`
+venn_up$..values..$`3`
+
+DimPlot(funda_merge, group.by = "seurat_clusters", label = T)
+
+```
+
+# Correaltion with FACS
+
+```{r}
+DimPlot(funda_merge, group.by = "annotations_coarse")
+
+
+funda_merge@meta.data <- funda_merge@meta.data %>% mutate(
+  annotations_facs = case_when(annotations_coarse %in% c("CD4 Naive","CD4 Early activated") ~ "CD4_naive",
+                               annotations_coarse %in% c("CD4 Treg", "Proliferating" ) ~ "Treg_and_CD4_eff",
+                                annotations_coarse %in% c("CD8 Early activated", "CD8 Naive") ~ "CD8_naive",
+                               annotations_coarse %in% c("Tgd and NKT", "ILC") ~ "Tgd_NKT",
+                               annotations_coarse %in% c("CD8 AIMT") ~ "CD8_AIMT_and_eff",
+                               annotations_coarse %in% c("NK cells") ~ "NK_cells"
+                               )) %>% 
+  mutate(annotations_facs = ifelse(seurat_clusters == 4, "CD8_AIMT_and_eff",annotations_facs))
+
+DimPlot(funda_merge, group.by = "annotations_facs")
+
+seurat_meta_data <- funda_merge@meta.data
+seurat_meta_data$Tissue_ID <- paste(seurat_meta_data$Tissue, seurat_meta_data$MouseID, sep = ".")
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(Tissue_ID, annotations_facs) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(Tissue_ID, MouseID, Diet, Tissue) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+df4
+```
+
+
+```{r}
+df4
+df5  <- df4 %>% 
+ungroup   %>% 
+  mutate(Tissue_ID_Diet = paste(Tissue_ID, Diet, sep = ".")) %>% 
+  dplyr::select(Tissue_ID_Diet, freq, annotations_facs) %>% 
+pivot_wider(names_from = "Tissue_ID_Diet", values_from = "freq", values_fill = 0) 
+
+
+df6  <- df5 %>% pivot_longer(!annotations_facs, names_to = "Tissue_ID_Diet", values_to = "freq") %>% 
+  separate(Tissue_ID_Diet, into = c("Tissue","MouseID","Diet"), sep = "\\.", remove = F)
+
+df6
+```
+
+
+```{r fig.height = 5.5, fig.width = 8}
+
+df6 %>% 
+  dplyr::filter(Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annotations_facs, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Spleen scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+ggsave("figs/spl_scRNAseq.svg", width = 36, height = 9.5, units = "cm")
+
+df6 %>% 
+  dplyr::filter(Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annotations_facs, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+
+ggsave("figs/pln_scRNAseq.svg", width = 36, height = 9.5, units = "cm")
+
+
+DimPlot(funda_merge, group.by = "annotations_facs", cols = c("#006bd6ff","#41a90eff","#6ff86fff",
+                                                             "#be66beff","#a83e09ff","#ffa448ff"),
+        pt.size = 1) 
+```
+
+```{r}
+df4
+```
+
+Load facs percentages
+
+```{r}
+high_dim <- read_excel("G:/48_lab/Project Funda NOD/FACS/220614 NOD gluten free diet scRNAseq/HighDim/240125_results.xlsx")
+
+
+high_dim <- t(high_dim) %>% as.data.frame() %>% rownames_to_column("sample")
+
+high_dim <- high_dim[2:301,]
+high_dim
+colnames(high_dim) <- c("population", "value")
+
+high_dim
+high_dim$population <- sub(pattern = "X-shift_Angu_K102_xw0krs_", 
+                           replacement = "cluster",
+                            x = high_dim$population)
+high_dim$population <- sub(pattern = "X- | Freq. of Parent", 
+                           replacement = "",
+                            x = high_dim$population)
+
+
+high_dim <- high_dim %>% separate(population, into = c("tissue","sample","cluster"), 
+                                  sep = "/", remove = F) %>% mutate(
+                                    value = sub(value, pattern = ",", replacement = ".")
+                                  ) %>% mutate(value = as.numeric(value))
+
+high_dim <- high_dim %>% filter(!is.na(cluster))
+
+
+high_dim
+
+high_dim2 <- high_dim %>% dplyr::select(-population) %>% 
+  pivot_wider(names_from = "cluster", values_from = "value", values_fill = 0)
+
+high_dim2$Diet <- if_else(high_dim2$sample %in% c(1:5), "GFD", "STD")
+high_dim2
+
+high_dim2$tissue <- case_when(high_dim2$tissue == 1 ~ "pLN",
+                              high_dim2$tissue == 2 ~ "iLN",
+                              high_dim2$tissue == 3 ~ "SPL"
+                              )
+
+
+
+high_dim2 <- high_dim2 %>% mutate(
+  CD8_naive = `cluster1 |`+`cluster8 |`,
+  CD8_AIMT_and_eff = `cluster3 |`,
+  CD4_naive = `cluster5 |`,
+  NK_cells = `cluster9 |`,
+  Treg_and_CD4_eff = `cluster6 |`+`cluster7 |`,
+  Tgd_NKT = `cluster2 |`+`cluster4 |`+`cluster10 |`
+)
+
+high_dim2
+```
+
+```{r fig.height = 3, fig.width = 8}
+
+
+high_dim2 %>% dplyr::select(1,2,13,14:19) %>% 
+  pivot_longer(cols = c(4:9), names_to = "annot", values_to = "freq") %>% 
+  dplyr::filter(tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, size = 3, shape = 21, 
+              aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annot, scales = "free", ncol = 6) +
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  ylim(0,NA)+
+  ggpubr::stat_compare_means(label.x = 1.5, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+    theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())  + ggtitle("pLN FACS") + ggtheme()
+  
+ggsave("figs/pln_facs.svg", width = 36, height = 9.5, units = "cm")
+
+
+high_dim2 %>% dplyr::select(1,2,13,14:19) %>% 
+  pivot_longer(cols = c(4:9), names_to = "annot", values_to = "freq") %>% 
+  dplyr::filter(tissue == "SPL") %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, size = 3, shape = 21, 
+              aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annot, scales = "free", ncol = 6) +
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  ylim(0,NA)+
+  theme_classic() +
+  ggpubr::stat_compare_means(label.x = 1.5, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+    theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())  + ggtitle("Spleen FACS") + ggtheme()
+
+ggsave("figs/spl_facs.svg", width = 36, height = 9.5, units = "cm")
+
+```
+
+```{r}
+high_dim2
+dir.create("./results_240618_tissue/")
+for(i in c(14:19)){
+  
+  df_filt <- high_dim2 %>% 
+    dplyr::select(1,2,13,i)
+  colnames(df_filt) <- c(colnames(df_filt[c(1:3)]), "value")
+  df_filt$value <- as.numeric(df_filt$value)
+
+plot <- df_filt %>% 
+  ggplot(aes(x = tissue,
+             y = value)) +
+  geom_boxplot(outlier.shape = NA, aes(fill = tissue), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = tissue)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        strip.text = element_text(size = 16),
+        axis.ticks.x = element_blank()) + 
+  scale_color_manual(values = c("#56ac00ff","#5fd3bcff","#4a6ca3ff")) + 
+  scale_fill_manual(values = c("#56ac00ff","#5fd3bcff","#4a6ca3ff")) +
+  ylim(0,NA) +
+  xlab("") + ylab("Value") +
+  ylim(0,NA)+
+  ggpubr::stat_compare_means(label.x = 1.5, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+      theme(plot.title = element_text(hjust = 0.5, size = 22),
+          axis.line = element_line(colour = "black"), 
+        axis.ticks = element_line(colour = "black")) +
+  plot_annotation(
+    title = paste(stringr::str_replace_all(string = colnames(high_dim2)[i], pattern = "/", replacement = "\n")) ,
+    theme = theme(plot.title = element_text(size = 8), plot.subtitle = element_text(size = 8)))
+print(plot)
+  ggsave(paste0("./results_240618_tissue/",paste0("plot_",i),".svg"), width = 10, height = 9, units = "cm")
+}
+
+getwd()
+```
+
+## Correlation
+
+```{r}
+df4
+
+high_dim3 <- high_dim2 %>% mutate(Tissue_ID = paste0(tissue, ".Mouse_",sample)) %>% dplyr::select(14:20)
+high_dim3
+corr_df <- df4 %>% 
+  dplyr::select(1,freq, annotations_facs) %>% 
+  mutate(freq = freq*100) %>% 
+  pivot_wider(names_from = "annotations_facs", values_from = freq, 
+              values_fill = 0) 
+
+colnames(corr_df)[2:7] <- paste("FACS",colnames(corr_df)[2:7])
+
+high_dim3$Tissue_ID <- gsub(high_dim3$Tissue_ID, pattern = "SPL", replacement = "Spleen")
+colnames(high_dim3)[1:6] <- paste("scRNAseq",colnames(high_dim3)[1:6])
+corr_df <-  corr_df %>% left_join(high_dim3)
+corr_df
+
+corr_df2 <- corr_df %>% pivot_longer(!Tissue_ID, names_to = "population", values_to = "freq") %>% 
+  separate(Tissue_ID, into = c("Tissue","MouseID"), sep = "\\.", remove = F) %>% 
+  separate(population, into = c("Method","Population"), sep = " ", remove = T) %>% 
+  pivot_wider(names_from = Method, values_from = freq)
+  
+corr_df2
+
+
+library(ggpubr)
+options(repr.plot.width = 5, repr.plot.height = 5)
+  corr_df2 %>%  ggplot(aes(x=FACS, y=scRNAseq)) +
+  geom_point(size = 1.5, aes(shape = Tissue, color = Population)) +
+ geom_smooth(method=lm) + ggtitle("") +stat_cor() + theme_classic() + ggtheme() +
+ scale_y_continuous() + 
+    scale_color_manual(values = c("#006bd6ff","#41a90eff","#6ff86fff",
+                                                             "#be66beff","#a83e09ff","#ffa448ff")) + 
+    ggtheme() + NoLegend()
+    ggsave("figs/correlation.svg", width = 7, height = 7, units = "cm")
+
+ 
+  
+  options(repr.plot.width = 5, repr.plot.height = 5)
+  corr_df2 %>%  ggplot(aes(x=FACS, y=scRNAseq)) +
+  geom_point(size = 1.5, aes(shape = Tissue, color = Population)) +
+ geom_smooth(method=lm) + ggtitle("") +stat_cor() + theme_classic() + ggtheme() +
+ scale_y_continuous() + facet_wrap(~Population, ncol = 3, scales = "free") + 
+    scale_color_manual(values = c("#006bd6ff","#41a90eff","#6ff86fff",
+                                                             "#be66beff","#a83e09ff","#ffa448ff"))
+  
+  
+ DimPlot(funda_merge, group.by = "annotations_facs", cols = c("#006bd6ff","#41a90eff","#6ff86fff",
+                                                             "#be66beff","#a83e09ff","#ffa448ff")) 
+
+  
+```
+
+
+```{r}
+high_dim2
+
+for(i in c(14:19)){
+  
+  df_filt <- high_dim2 %>% 
+    dplyr::select(1,2,13,i)
+  colnames(df_filt) <- c(colnames(df_filt[c(1:3)]), "value")
+  df_filt$value <- as.numeric(df_filt$value)
+
+plot <- df_filt %>% 
+  ggplot(aes(x = Diet,
+             y = value)) +
+  facet_wrap(~tissue, ncol = 3, scales = "free") +
+   geom_dotplot(binaxis='y', stackdir='center', dotsize = 0) + 
+   geom_boxplot(outlier.shape = NA) +
+    geom_jitter(binaxis='y', position=position_jitter(width = 0.1, height = 0.01), 
+                size = 3, stackdir='center', aes(color = Diet)) + 
+  theme_classic() + xlab("") +  
+ xlab("") + ylab("Value") +
+   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+      theme(plot.title = element_text(hjust = 0.5, size = 22),
+          axis.line = element_line(colour = "black"), 
+        axis.ticks = element_line(colour = "black")) +
+  ylim(0,NA)+
+  plot_annotation(
+    title = paste(stringr::str_replace_all(string = colnames(high_dim2)[i], pattern = "/", replacement = "\n")) ,
+    theme = theme(plot.title = element_text(size = 8), plot.subtitle = element_text(size = 8)))
+print(plot)
+  #ggsave(paste0("./results_240129/",paste0("plot_",i),".png"), width = 32, height = 12, units = "cm")
+}
+
+getwd()
+```
+
+# FACS heatmap
+
+## Cluster heatmap
+
+```{r}
+hm <- read_xlsx("../../../Project Funda NOD/FACS/Final_analysis/HighDim/240618_cluster_heatmap_6clusters.xlsx")
+
+hm_map <- hm %>% column_to_rownames("Cluster") %>% as.matrix()
+
+hm_map
+
+library(pheatmap)
+
+pheatmap(hm_map, main = "", 
+         scale = "column", cluster_cols = T, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+
+pheatmap(hm_map[c(1,4,2,5,3,6),c(10,11,3,5,4,7,8,1,2,9)], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12, width = 4, height = 3)
+
+
+pheatmap::pheatmap(hm_map[c(1,4,2,5,3,6),c(10,11,3,5,4,7,8,1,2,9)], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12, width = 4, height = 3,
+        filename = "heatmap_cluster_FACS_3.pdf")
+
+getwd()
+```
+
+
+```{r}
+hm <- read_xlsx("../../../220614 NOD gluten free diet scRNAseq/HighDim/cluster_heatmap_coarse.xlsx")
+
+hm_map <- hm %>% column_to_rownames("Cluster") %>% as.matrix()
+
+hm_map
+
+library(pheatmap)
+
+pheatmap(hm_map[,c(10,3,5,6,11,1,2,7,8,9,4)], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+
+
+pheatmap(hm_map[c(1,5,3,4,2),c(10,3,5,6,11,1,2,7,8,9,4)], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12, width = 4, height = 3,
+        filename = "heatmap_cluster_FACS.pdf")
+```
+
+
+
+
+
+# IREA
+
+```{r}
+## Read IREA table outputs
+irea <- list.files("IREA", full.names = T)
+
+
+for(i in 1:10){
+  ire_sample <- read_csv(irea[i])
+  ire_sample$i <- irea[i]
+  if(i == 1){
+      irea_all <- ire_sample
+    } else {
+      irea_all <- rbind(irea_all, ire_sample)
+      }
+}
+
+irea_all$...1 <- NULL
+
+irea_all$i <- sub(irea_all$i, pattern = "IREA/df_irea_", replacement = "")
+irea_all$i <- sub(irea_all$i, pattern = ".csv", replacement = "")
+  
+irea_all <-  irea_all %>% separate(i, into = c("Diet", "Cluster"), sep = "_")
+
+irea_all
+```
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
+ stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_shape_manual(values = c(17,19,15))+
+ scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme()
+
+#ggsave(filename = "figs/irea_gfd.svg", width = 19, height = 10, units = "cm")
+#ggsave(filename = "figs/irea_gfd.png", width = 19, height = 10, units = "cm")
+
+```
+
+
+No filtration pval
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
+ # filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
+ stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_shape_manual(values = c(17,19,15))+
+ scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme()
+
+#ggsave(filename = "figs/irea_gfd.svg", width = 19, height = 10, units = "cm")
+ggsave(filename = "figs/irea_gfd_no_filtration.png", width = 60, height = 15, units = "cm")
+
+
+```
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median'), y = `Enrichment Score`, fill=..y..)) + 
+ stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_shape_manual(values = c(17,19,15))+
+ scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme() + coord_flip()
+
+#ggsave(filename = "figs/irea_gfd2.svg", width = 19, height = 22, units = "cm")
+#ggsave(filename = "figs/irea_gfd2.png", width = 19, height = 22, units = "cm")
+
+```
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "std" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
+ #geom_bar(position='dodge', stat='summary', fun='mean', alpha = 0.7, width = 0.9, aes(fill = color_enrich$enrich)) +
+  stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_size_continuous(range = c(1,4))+
+  scale_shape_manual(values = c(17,19,15))+
+   scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme()
+
+ggsave(filename = "figs/irea_std.svg", width = 21, height = 10, units = "cm")
+ggsave(filename = "figs/irea_std.png", width = 21, height = 10, units = "cm")
+
+
+```
+
+```{r}
+irea_all %>% 
+   filter(Diet == "std" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median'), y = `Enrichment Score`, fill=..y..)) + 
+ #geom_bar(position='dodge', stat='summary', fun='mean', alpha = 0.7, width = 0.9, aes(fill = color_enrich$enrich)) +
+  stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_size_continuous(range = c(1,4))+
+  scale_shape_manual(values = c(17,19,15))+
+   scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme() + coord_flip()
+
+ggsave(filename = "figs/irea_std2.svg", width = 19, height = 24, units = "cm")
+ggsave(filename = "figs/irea_std2.png", width = 19, height = 24, units = "cm")
+
+
+```
+
+
+# FC STD GF
+```{r}
+Idents(funda_merge) <- funda_merge$Diet
+funda_merge$Diet %>% table
+
+fc <- FoldChange(funda_merge, ident.1 = "GFD", ident.2 = "Standard")
+
+fc %>% arrange(avg_log2FC)
+
+```
+
+
+```{r}
+genes_hansen_up <- c('Cd247','Zbtb32','Galnt16','Slc7a6','Mboat1','Chst2','Cep55','Dennd2d','Nebl','Gfi1',
+'AI838599','Adamts6','Podnl1','Itih5','Cxcl13','Ms4a4b','Zbp1','Gimap8','Cd28','Bcl11b','Thy1','Tnfsf13b',
+'Bcl2','BC018473','Cd69','H2-Oa','Parm1','Tmtc1','Ms4a6b','Rgs16','Lipc','Atp8b4','Socs1','Ikzf2','Clu',
+'Lyz2','Spns3','Gbp4','Stc2','Trat1','Mpzl3','Tox','Cst7','AC154378.1','Sit1','Cacnb3','Upp1',
+'Lurap1l','Cd5','Themis','B4galt6','Gpr176','Il5ra','Il12rb1','Mcoln3','Pdcd1','Olfr1372-ps1',
+'Tnf','Havcr1','Gbp6','Cd96','Colq','Trbv13-2','Nudt17','Cd8a','Dnaaf3','Gm44103','2010016I18Rik',
+'Nlrc5','Ctla4','S1pr3','Gm2682','Eno2','Kcng1','Tmem154','Cd27','Tnn','Il17rb',
+'Slfn1','Il2ra','Cish','Plekhf1','Dkk2','Mreg','Pla2g2d','Ggt1','Phf24','Mcemp1','Asprv1','Slc36a2','Trac',
+'Tgtp1','Bcat1','Adam11','Gm39321','Trbv16','Pappa','5830411N06Rik','Rap1gap','Lamc2','Gm38244','Bst1',
+'9330175E14Rik','Gm12407','9530052E02Rik','Ccr4','Nyx','Irak1bp1','Serpina3i','Stmn2','Smpd5','Chdh','Kcne4',
+'Izumo1r','Gm11707','Ccl19-ps3','Tnfsf11','Scel','Slc12a5','Art2a-ps','Gm15056','Il7','A430088P11Rik',
+'Madcam1','Msc','CT571247.2','Tnfsf8','Gm37975','Gm5134','Cilp','Tnfrsf9','Tmem45a','Ccdc30','Sspo',
+'B630019A10Rik','Iglc4','Il13ra2','Cacna1b','Serpina3n','Drc1','Ccl21c','Cxcl9','Dntt','Il33','Erp27','Slco5a1',
+'Lyz1','Art2b','Flrt3','Unc5c','2610528A11Rik','Pigr','Vmn2r96','Cdcp1','Gm10851','Cdhr1','Osbpl10','Pla2g4f',
+'Fxyd2','Slc7a11','Gm12185','Rab26','Ryr3','Spock3','Kcnf1','Gxylt2','Ccl19','Gm48878','Gm16685','Slc10a6',
+'A730020M07Rik','Col28a1','Gm13546','Gm47792','Dsc2','H2-M2','Nrg1','Grem1','Tmem150c','Thbs4','Mpped1','Trbv29','Dsc3',
+'Serpina10','Slc6a7','Nrn1','Sostdc1','Fat3','2610035D17Rik','Gm10591','Aire','Gm33858','Gpnmb','Tarm1','Fbxo40',
+'B430119L08Rik','Gbp10','Ccr8','Itgb8','Galnt6os','Car12','Tmprss11d','Hc','Insm1','Ighv12-3')
+```
+
+```{r}
+
+
+fc.df  <- fc  %>%  arrange(desc(avg_log2FC)) %>% 
+  rownames_to_column("gene") %>% 
+  dplyr::select(gene, avg_log2FC)
+ranks<- deframe(fc.df)
+
+library(fgsea)
+
+plotEnrichment(genes_hansen_up,
+               ranks) + labs(title="Hansen up in Ctrl") + ylim(-0.7,0.7) + ggtheme() 
+```
+
+
+# Treg DE genes
+
+```{r}
+
+treg <- subset(funda_merge, annotations_coarse == "CD4 Treg")
+
+DimPlot(treg)
+
+mrk_de_treg <- FindAllMarkers(treg, only.pos = TRUE)
+mrk_de_treg
+
+
+avgexp = AverageExpression(treg, features = mrk_de_treg$gene,
+                           return.seurat = F, group.by = "MouseID", 
+                          assay = "RNA")
+
+avgexp$RNA
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+pheatmap(t(avgexp$RNA), main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+
+
+avgexp = AverageExpression(treg, features = c("Itgae","Klrg1","Tcf7","Foxp3","Tigit","Ctla4","Mki67"),
+                           return.seurat = F, group.by = "MouseID", 
+                          assay = "RNA")
+
+avgexp$RNA
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+pheatmap(t(avgexp$RNA), main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+```
+
+
+# Clonal expansion
+## Clone abundance
+
+```{r}
+metadata_6 <- funda_merge@meta.data
+rownames(metadata_6) <- colnames(funda_merge)
+
+metadata_6 <- metadata_6 %>% mutate(
+  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
+  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
+)
+
+clone_table <- metadata_6 %>%
+  dplyr::group_by(factor(clone_aa)) %>%
+          dplyr::summarize(n = n(), sum = sum()) %>%
+    arrange(desc(n))
+
+clone_table
+```
+
+
+```{r}
+metadata_6$test <- 0
+metadata_6 <- metadata_6 %>% group_by(test, clone_aa) %>% mutate(clone_abundance = as.numeric(n()))
+
+
+metadata_6 <- as.data.frame(metadata_6 %>% mutate(clone_abundance = as.numeric(ifelse(clone_abundance==1056,NA_integer_,clone_abundance))) %>%
+  mutate(log_clone_abundance = log(clone_abundance, base = 2)))
+rownames(metadata_6) <- colnames(funda_merge)
+
+funda_merge@meta.data <- metadata_6
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+funda_merge <- AddMetaData(funda_merge, as.numeric(metadata_6$clone_abundance), "clone_abundance")
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+FeaturePlot(funda_merge, reduction = "umap", features = "log_clone_abundance")
+
+FeaturePlot(subset(funda_merge, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
+
+#ggsave("fig/Log2CloneAbundance.png", width = 13, height = 8, units = "cm", dpi = 120)
+#ggsave("fig/Log2CloneAbundance.svg", width = 13, height = 8, units = "cm", dpi = 120)
+
+# Clone abundance bar graph
+metadata_6 <- metadata_6 %>%
+  mutate( clone_abundance_group = case_when(clone_abundance==5 ~ "5",
+                                            clone_abundance==4 ~ "4",
+                                            clone_abundance==3 ~ "3",
+                                            clone_abundance==2 ~ "2",
+                                            clone_abundance==1 ~ "1",
+                                            TRUE ~ "0"
+                                            ),
+          clone_abundance_isNA = if_else(clone_abundance %in% c(1:5), "1", "0")) 
+
+metadata_6 %>% 
+  ggplot(aes(x = annotations_fine)) + 
+  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
+  coord_flip() +
+  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), 
+        legend.position="right", 
+        panel.border = element_blank(), 
+        legend.title = element_blank()) + 
+  ggtitle("Clone abundance in clusters")
+
+library(RColorBrewer)
+brewer.pal(n, name)
+```
+
+
+```{r}
+## TCR detection
+
+metadata_6 %>% 
+  ggplot(aes(x = factor(annotations_coarse, levels = rev(levels(factor(metadata_6$annotations_coarse)))))) + 
+  geom_bar(aes(fill = factor(clone_abundance_isNA)), position = "fill") + 
+  coord_flip() +
+  scale_fill_manual(values = c("grey80", "palegreen3")) + xlab("Frequency")+
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), 
+        legend.position="right", 
+        panel.border = element_blank(), 
+        legend.title = element_blank()) + 
+  ggtitle("Clone abundance in clusters")
+```
+
+
+```{r}
+### Clonal abundance, axis up to 30%
+ metadata_6 %>% 
+  filter(clone_abundance_isNA == 1) %>% 
+  ggplot(aes(x = annotations_coarse)) + 
+  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
+   coord_flip() +
+  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
+  xlab("Frequency") +
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position="right", panel.border = element_blank(), legend.title = element_blank()) + 
+  ggtitle("Clone abundance in clusters") + 
+  ggtheme()
+
+# ggsave("fig/Log2CloneAbundance_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
+# ggsave("fig/Log2CloneAbundance_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
+```
+
+```{r}
+
+### Clonal abundance, axis up to 30%
+ metadata_6 %>% 
+    ggplot(aes(x = factor(annotations_coarse, levels = rev(levels(factor(annotations_coarse))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
+  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
+   coord_flip() +
+  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
+  xlab("Frequency") +
+  ylab("") + 
+  theme_classic() + 
+  theme(plot.title = element_text(hjust = 0.5), legend.position="right", panel.border = element_blank(), legend.title = element_blank()) + 
+  ggtitle("Clone abundance in clusters") + 
+  ggtheme()
+
+ ggsave("figv06/Log2CloneAbundance_bar_v06.png", width = 18, height = 10, units = "cm", dpi = 120)
+ ggsave("figv06/Log2CloneAbundance_bar_v06.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
+```
+
+
+```{r fig.width=30, fig.height=20}
+plot_list <- list()
+
+for(i in 2:16){
+ 
+plot_list[[i]] <-  DimPlot(funda_merge, 
+        cells.highlight = colnames(funda_merge)[which(funda_merge$clone_aa == pull(clone_table, `factor(clone_aa)`)[i])],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = pull(clone_table, `factor(clone_aa)`)[i], pattern = "CDR3a", replacement = "\nCDR3a"))
+  }
+
+cowplot::plot_grid(plotlist = plot_list[2:16], ncol = 5)
+#ggsave("fig/tcr_funda.png", width = 35, height = 60, units = "cm")
+
+```
+
+## Clone abundance = boxplot 
+```{r}
+
+df4 <-metadata_6 %>% mutate(clon_expanded = if_else(clone_abundance_group == 1 ,"Unique clone","2+ clones")) %>% group_by(MouseID, clon_expanded) %>% 
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) 
+
+df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+    df4 %>%
+      mutate(Diet = if_else(grepl(MouseID, pattern = "1|2|3|4|5"), "GFD", "STD")) %>% 
+      filter(!is.na(clon_expanded)) %>% 
+     ggplot(aes(x = Diet, y = freq*100)) + 
+ geom_boxplot(outlier.shape = NA) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+      geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
+      scale_color_manual(values= c("firebrick","lightskyblue3")) + 
+      theme_minimal() + 
+      facet_wrap(~clon_expanded, scales = "free", ncol = 2)  + ylim(c(0,NA))
+    
+  
+```
+
+
+## Clone abundance = boxplot2
+```{r, fig.width=12, fig.height=8}
+
+df4 <-metadata_6 %>% mutate(clon_expanded = if_else(clone_abundance_group == 1 ,"Unique clone","2+ clones")) %>% mutate(MouseID_cluster = paste(MouseID, seurat_clusters, sep = "-")) %>% group_by(MouseID_cluster, clon_expanded) %>% 
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) 
+
+df4
+
+df4 %>% group_by(MouseID_cluster) %>% summarise(sum = sum(freq))
+
+    df4 %>%
+      mutate(Diet = if_else(grepl(MouseID_cluster, pattern = "_1|_2|_3|_4|_5"), "GFD", "STD")) %>% 
+      separate(MouseID_cluster, into = c("MouseID", "seurat_clusters"), sep = "-") %>% 
+       filter(!is.na(clon_expanded)) %>% 
+           filter(clon_expanded == "2+ clones") %>% 
+     ggplot(aes(x = Diet, y = freq*100)) + 
+ geom_boxplot(outlier.shape = NA) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+      geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
+      scale_color_manual(values= c("firebrick","lightskyblue3")) + 
+      theme_minimal() + 
+      facet_wrap(~factor(seurat_clusters, levels = c(0:9,11,17)), scales = "free", ncol = 7)  + ylim(c(0,NA))
+    
+  
+```
+
+
+
+Clones in tissues
+
+```{r}
+
+## top 10 clones tissues 
+
+top_10_clones <- pull(clone_table, `factor(clone_aa)`)[2:11]
+
+top_10_clones %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+metadata_7 <- metadata_6 %>% filter(clone_aa %in% top_10_clones) %>% group_by(clone_aa, Tissue) %>% tally %>% pivot_wider(names_from = "Tissue", values_from = n, values_fill = 0) %>% arrange(desc(Spleen))
+
+```
+
+
+# Reclustering unconventional and proliferating cells
+
+## Subsetting
+
+```{r}
+DimPlot(funda_merge, label = T)
+
+unconv_prolif <- subset(funda_merge, seurat_clusters %in% c(7,9,10,16,17))
+
+ unconv_prolif <- NormalizeData(object = unconv_prolif)
+  unconv_prolif <- ScaleData(unconv_prolif, verbose = FALSE)
+  unconv_prolif <- FindVariableFeatures(unconv_prolif, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  unconv_prolif <- RunPCA(unconv_prolif, npcs = 10, verbose = FALSE)
+  unconv_prolif <- RunUMAP(unconv_prolif, reduction = "pca", dims = 1:10)
+  unconv_prolif <- FindNeighbors(unconv_prolif, dims = 1:10)
+  unconv_prolif <- FindClusters(unconv_prolif, resolution = 0.9)
+  DimPlot(unconv_prolif, label = T)
+  
+
+  DimPlot(unconv_prolif, group.by = "Tissue") 
+  DimPlot(unconv_prolif, group.by = "Diet") 
+  
+
+FeaturePlot(unconv_prolif, features = c("Cd4", "Cd8a", "Mki67", "Ncr1"))
+FeaturePlot(unconv_prolif, features = c("Foxp3", "Il2ra", "Trdc", "Trgv2"))
+FeaturePlot(unconv_prolif, features = c("Gata3", "Tbx21", "Ifng", "Bcl6"))
+FeaturePlot(unconv_prolif, features = c("Ikzf2", "Klrk1", "Klrd1", "Il7r"))
+
+```
+
+```{r fig.width=18, fig.height=10}
+
+unconv_prolif <- reduced_annot(unconv_prolif, "Immgen_annot_single", n_cells_to_other = 20)
+
+unconv_prolif$Immgen_annot_single_red %>% table
+
+DimPlot(unconv_prolif, group.by = "Immgen_annot_single_red", label = T, repel = T) 
+ 
+#ggsave("fig/unconventional_dimplot.png", width = 35, height = 25, units = "cm")
+```
+
+## Unconventional proliferating annotations
+
+```{r fig.width=7, fig.height=4}
+  DimPlot(unconv_prolif, label = T)
+
+md <- unconv_prolif@meta.data
+
+md <- md %>% mutate(annotations_fine = recode(seurat_clusters, 
+                                                     "0" = "00 NK cells 1",
+                                                     "1" = "01 CD4 naive",
+                                                     "2" = "02 Treg 1",
+                                                     "3" = "03 Tgd 1",
+                                                     "4" = "04 Proliferating",
+                                                     "5" = "05 NKT / Th1",
+                                                     "6" = "06 Treg 2",
+                                                     "7" = "07 CD8 naive",
+                                                     "8" = "08 NK and Tgd 3",
+                                                     "9" = "09 Tgd 2",
+                                                     "10" = "10 NK cells 2",
+                                                     "11" = "11 NKT / Th17"))
+
+unconv_prolif@meta.data <- md
+DimPlot(unconv_prolif, group.by = "annotations_fine")
+```
+
+## Markers
+
+```{r eval=TRUE, include=TRUE}
+markers_prolif <- FindAllMarkers(unconv_prolif, min.diff.pct = 0.05, logfc.threshold = log(1.5))
+
+markers_prolif <- rank_score_func(markers_prolif)
+markers_prolif %>% filter(avg_log2FC >0) %>% group_by(cluster) %>% slice_max(order_by = score, n = 20) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+
+```
+
+```{r fig.width=30, fig.height=23}
+FeaturePlot(unconv_prolif, features = c("Ncr1","Gzma","Fcer1g","Prf1","Klre1",
+                                        "Cd4", "Cd40lg","S1pr1","Ccr7", "Il6ra",
+                                        "Foxp3","Il1rl1","Ctla4","Tigit","Icos",
+                                        "Trgv2","Trdc","Ccr9","Itgae","Tmem108",
+                                        "Cxcr6","Il4","Zbtb16","Xcl1","Fasl",
+                                        "Cd200","Izumo1r","Tnfsf11","Tnfsf8","Pdcd1"),
+            ncol = 5)
+#ggsave("fig/unconv_markers1.png", width = 30, height = 20)
+
+FeaturePlot(unconv_prolif, features = c("Gzmk","Ccr10","Cx3cr1","S100a4","Lgals3",
+                                        "Kcnj8", "Gzmm","Ncr1","Cd7", "Xcl1",
+                                        "Hck","Prdm16","Tcrg-V7","Cxxc5","Klri1",
+                                        "Tnni1","Klrb1a","Scimp","Klrb1f","Klrb1f",
+                                        "Blk","Lingo4","Il17re","Rorc","Il23r"),
+            ncol = 5)
+#ggsave("fig/unconv_markers2.png", width = 30, height = 20)
+
+```
+
+Good vs bad NK cells
+
+```{r}
+
+nk_cell_diff <- FindMarkers(unconv_prolif, ident.1 = 0, ident.2 = 10)
+#nk_cell_diff
+
+```
+
+
+Boxplots
+
+```{r}
+seurat_meta_data <- unconv_prolif@meta.data
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, annotations_fine) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
+  facet_wrap(~annotations_fine, scales = "free", ncol = 5) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+
+# #ggsave("fig/clusters_boxplots_unconventional.png", width = 20, height = 15, units = "cm")
+
+```
+
+
+## Unconventional clones 
+
+```{r}
+FeaturePlot(unconv_prolif, reduction = "umap", features = "log_clone_abundance")
+
+FeaturePlot(subset(unconv_prolif, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
+
+```
+
+
+```{r fig.width=20, fig.height=35}
+metadata_6 <- unconv_prolif@meta.data
+rownames(metadata_6) <- colnames(unconv_prolif)
+
+metadata_6 <- metadata_6 %>% mutate(
+  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
+  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
+)
+
+clone_table_prolif <- metadata_6 %>%
+  dplyr::group_by(factor(clone_aa)) %>%
+          dplyr::summarize(n = n(), sum = sum()) %>%
+    arrange(desc(n))
+
+clone_table_prolif %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+
+```{r fig.width=20, fig.height=35}
+plot_list <- list()
+
+for(i in 2:15){
+ 
+plot_list[[i]] <-  DimPlot(unconv_prolif, split.by = "Diet",
+        cells.highlight = colnames(unconv_prolif)[which(unconv_prolif$clone_aa == pull(clone_table_prolif, `factor(clone_aa)`)[i])],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = pull(clone_table_prolif, `factor(clone_aa)`)[i], pattern = "CDR3a", replacement = "\nCDR3a"))
+}
+
+cowplot::plot_grid(plotlist = plot_list[2:15], ncol = 2)
+```
+
+# Show Egr and early activated
+
+```{r fig.height = 4, fig.width = 5}
+funda_merge$c14 <- funda_merge$seurat_clusters %in% c(14)
+DimPlot(funda_merge, group.by = "c14", cols = c("grey78","#b532b2ff"))
+
+funda_merge$c18 <- funda_merge$seurat_clusters %in% c(18)
+DimPlot(funda_merge, group.by = "c18", cols = c("grey78","#b532b2ff"))
+
+```
+
+
+# Treg reclustering
+
+```{r}
+DimPlot(funda_merge, label = T, group.by = "seurat_clusters")
+
+tregs_tfh <- subset(funda_merge, seurat_clusters %in% c(7,8,11))
+
+ tregs_tfh <- NormalizeData(object = tregs_tfh)
+  tregs_tfh <- ScaleData(tregs_tfh, verbose = FALSE)
+  tregs_tfh <- FindVariableFeatures(tregs_tfh, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  tregs_tfh <- RunPCA(tregs_tfh, npcs = 10, verbose = FALSE)
+  tregs_tfh <- RunUMAP(tregs_tfh, reduction = "pca", dims = 1:10)
+  tregs_tfh <- FindNeighbors(tregs_tfh, dims = 1:10)
+  tregs_tfh <- FindClusters(tregs_tfh, resolution = 0.4)
+  DimPlot(tregs_tfh, label = T)
+  
+
+  DimPlot(tregs_tfh, group.by = "Tissue") 
+  DimPlot(tregs_tfh, group.by = "Diet") 
+  
+
+
+FeaturePlot(tregs_tfh, features = c("Mki67", "Cxcr6", "Foxp3", "Ikzf2"))
+FeaturePlot(tregs_tfh, features = c("Cd4", "Cd8a", "Mki67", "Rorc"))
+FeaturePlot(tregs_tfh, features = c("Cd3d", "Il1r1", "Cd160", "Ncr1"))
+FeaturePlot(tregs_tfh, features = c("Foxp3", "Il2ra", "Trdc", "Trgv2"))
+FeaturePlot(tregs_tfh, features = c("Gata3", "Tbx21", "Ifng", "Bcl6"))
+FeaturePlot(tregs_tfh, features = c("Ikzf2", "Bcl6", "Klrd1", "Il7r"))
+FeaturePlot(tregs_tfh, features = c("Tnfrsf18", "Icos", "Itgae", "Pdcd1"))
+
+
+
+FeaturePlot(tregs_tfh, features = c("Cd8a", "Foxp3"))
+VlnPlot(tregs_tfh, features = c("Cd8a", "Foxp3"), group.by = )
+
+tregs_tfh$annotations_fine %>% table
+
+```
+
+# Fig plot
+
+```{r fig.height = 4, fig.width = 5}
+funda_merge$treg <- funda_merge$seurat_clusters %in% c(7,8,11)
+DimPlot(funda_merge, group.by = "treg", cols = c("grey78","#fd7a00ff"))
+
+DimPlot(tregs_tfh, cols = c("#e3e34dff", "#5a9fdeff","#d5a43fff",
+                            "#6faea9ff","#d2723dff","#c94eb8ff"), pt.size = 6, raster = T,
+        raster.dpi = c(900,900)) + ggtheme()
+#ggsave("fig/treg_dimplot.svg", width = 8, height = 5.5, units = "cm")
+
+
+
+```
+
+## Markers
+```{r}
+markers_tregs <- FindAllMarkers(tregs_tfh, min.diff.pct = 0.05, logfc.threshold = log(1.5))
+
+markers_tregs <- rank_score_func(markers_tregs)
+
+
+markers_tregs %>% filter(avg_log2FC >0) %>% group_by(cluster) %>% slice_max(order_by = score, n = 20)
+
+
+markers_tregs %>% filter(avg_log2FC >0) %>% group_by(cluster) %>% slice_max(order_by = score, n = 20) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+
+```
+
+## Markers
+```{r}
+table(Idents(tregs_tfh))
+markers_tregs <- FindAllMarkers(tregs_tfh, only.pos = T)
+
+markers_tregs
+write.csv(markers_tregs, "240806_markers_treg.csv")
+```
+
+
+## Heatmap Treg markers
+
+```{r fig.width = 9.5, fig.height = 2.5}
+markers  <- str_to_sentence(rev(c("IKZF2","IL2RA","FOXP3","KLRG1",
+                                  "CCR7","SELL",  "TCF7", "CD44", "IL7R",
+                                  "CTLA4","IL2RA","IL10",
+                                  "BCL6","CXCR5","TBX21",
+                                  "Cd40lg","Itgae","Tigit","Il18r","S100a6","Il1rl1","S100a4","Gzmb",
+                                  "Egr1","Tnfrsf9","Egr2","Cd200","Irf4","Lag3",
+                                  "Satb1","Il21","Pdcd1",
+                                  "MKI67","IFNG","Ccr10"
+                  )))
+
+
+avgexp = AverageExpression(tregs_tfh, features = markers,
+                           return.seurat = F, group.by = "seurat_clusters", 
+                          assay = "RNA")
+
+pheatmap(t(avgexp$RNA), main = "",
+         scale = "column", cluster_cols = T, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+                  fontsize = 12)
+
+
+# pheatmap(t(avgexp$RNA[,c(1,6,3,2,7,8,4,10,5,9)]), main = "", 
+#          scale = "column", cluster_cols = F, cluster_rows = F,
+#         color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+#          border_color = "white",
+#                   fontsize = 12)
+
+
+markers_order  <- rev(c("Ctla4","Il2ra","Foxp3","Ikzf2","Sell","Ccr7","Satb1","Lef1","Tcf7",
+                    
+                    "Ccr10","Il7r","Tbx21","Cd44",
+                    "Ifng","Irf4","Tnfrsf9","Egr1",
+                    "S100a6","S100a4","Gzmb","Klrg1",
+                    "Icos","Itgae",
+                    "Bcl6","Pdcd1","Il21","Cxcr5"))
+
+avgexp = AverageExpression(tregs_tfh, features = markers_order,
+                           return.seurat = F, group.by = "seurat_clusters", 
+                          assay = "RNA")
+pheatmap(t(avgexp$RNA)[c(1,4,2,3,5,6),], main = "",
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+                  fontsize = 12)
+
+pheatmap::pheatmap(t(avgexp$RNA)[c(1,4,2,3,5,6),], main = "",
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+                  fontsize = 12, 
+        filename = "plots/heatmap_treg_v03.pdf",
+         width = 6, height = 2.2,)
+```
+
+
+```{r}
+markers  <- str_to_sentence(rev(c("ICOS","ITGAE","IKZF2","IL2RA","FOXP3","KLRG1",
+                                  "CCR7","SELL",  "TCF7", "CD44", "IL7R",
+                                  "CTLA4","IL2RA","IL10",
+                                  "BCL6","CXCR5","TBX21",
+                                  "Cd40lg","Itgae","Tigit","Il18r","S100a6","Il1rl1","S100a4","Gzmb",
+                                  "Egr1","Tnfrsf9","Egr2","Cd200","Irf4","Lag3",
+                                  "Satb1","Il21","Pdcd1",
+                                  "MKI67","IFNG","Ccr10"
+                  )))
+
+
+avgexp = AverageExpression(tregs_tfh, features = markers,
+                           return.seurat = F, group.by = "seurat_clusters", 
+                          assay = "RNA")
+
+pheatmap(t(avgexp$RNA)[c(1,4,2,3,5,6),], main = "",
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+                  fontsize = 12)
+```
+
+## Treg proliferating annotations
+
+```{r fig.width=9, fig.height=3}
+DimPlot(tregs_tfh, label = T)
+
+md <- tregs_tfh@meta.data
+
+md <- md %>% mutate(annotations_fine = recode(seurat_clusters, 
+                                                     "0" = "1 Treg naive",
+                                                     "1" = "5 Treg memory",
+                                                     "2" = "2 Treg early activated",
+                                                     "3" = "4 Treg stem ",
+                                                     "4" = "3 Treg cytotoxic",
+                                                     "5" = "5 Tfh"))
+
+tregs_tfh@meta.data <- md
+DimPlot(tregs_tfh, group.by = "annotations_fine")
+```
+
+## Treg Boxplots
+
+```{r fig.width = 12, fig.height = 4.5}
+seurat_meta_data <- tregs_tfh@meta.data
+seurat_meta_data$MouseID2 <- str_replace_all(string = seurat_meta_data$MouseID, 
+                                            pattern = "Mouse_", 
+                                            replacement = "")
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, seurat_clusters, MouseID2) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_point(shape = 21, size = 6, aes(fill = Diet), ) +
+  geom_text(aes(label = MouseID2, x = Diet, y = freq), size = 4) +
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  scale_fill_manual(values = c("#bfdbf7ff", "#f6b0b0ff")) +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_text(angle = 90))
+
+ #ggsave("fig/clusters_boxplots_tregs.png", width = 20, height = 5, units = "cm")
+
+```
+
+```{r}
+
+seurat_meta_data <- tregs_tfh@meta.data
+seurat_meta_data$MouseID2 <- str_replace_all(string = seurat_meta_data$MouseID, 
+                                            pattern = "Mouse_", 
+                                            replacement = "")
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, annotations_fine, MouseID2) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annotations_fine, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Spleen scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+#ggsave("figs/treg_quant.svg", width = 32, height = 9, units = "cm")
+```
+
+
+
+### Quantification tissue
+
+```{r}
+seurat_meta_data <- tregs_tfh@meta.data
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Tissue, labels = c("pLN", "SPL")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Tissue), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Tissue)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Treg scRNAseq by tissue") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme() +
+  scale_color_manual(values = c("#5fd3bcff","#4a6ca3ff")) + 
+  scale_fill_manual(values = c("#5fd3bcff","#4a6ca3ff")) +
+  facet_wrap(~annotations_fine, scales = "free", ncol = 6) +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") 
+
+  #ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
+
+```
+
+### Quantification Diet
+
+```{r}
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, annotations_fine) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  dplyr::filter(Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Treg scRNAseq by diet, spleen") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme() +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  facet_wrap(~annotations_fine, scales = "free", ncol = 6) +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") 
+
+  #ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
+
+```
+
+```{r}
+df4 %>% 
+  dplyr::filter(Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Treg scRNAseq by diet, spleen") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme() +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  facet_wrap(~annotations_fine, scales = "free", ncol = 6) +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") 
+
+```
+
+
+## Quantification in full dataset
+
+```{r}
+tregs_tfh$seurat_clusters %>% table
+DimPlot(tregs_tfh)
+
+tregs_tfh$annot_treg <- paste("Treg cl.",tregs_tfh$seurat_clusters)
+tregs_tfh$barcode <- colnames(tregs_tfh)
+```
+
+```{r}
+funda_merge$barcode <- colnames(funda_merge)
+funda_merge@meta.data <- left_join(funda_merge@meta.data, dplyr::select(tregs_tfh@meta.data, barcode, annot_treg))
+
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+```
+
+```{r}
+DimPlot(tregs_tfh, label = T, label.size = 9)
+DimPlot(funda_merge, group.by = "annot_treg")
+```
+
+```{r fig.width = 12, fig.height = 4.5}
+seurat_meta_data <- funda_merge@meta.data
+seurat_meta_data$MouseID2 <- paste(str_replace_all(string = seurat_meta_data$MouseID, 
+                                            pattern = "Mouse_", 
+                                            replacement = ""),seurat_meta_data$Tissue)
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, annot_treg) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, annot_treg, Tissue, MouseID2) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annot_treg, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Both tissues scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+```
+
+
+```{r}
+DimPlot(tregs_tfh)
+
+df4 %>% 
+  dplyr::filter(!is.na(annot_treg) & Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(annot_treg, levels = levels(factor(df4$annot_treg))[c(1,3,5,4,2,6)]),
+             scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") + 
+  ggtheme()
+
+  ggsave("figv06/treg_quant_diet_pLN_ttest.png", width = 32, height = 9, units = "cm")
+
+```
+
+```{r}
+df4 %>% 
+  dplyr::filter(!is.na(annot_treg) & Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(annot_treg, levels = levels(factor(df4$annot_treg))[c(1,3,5,4,2,6)]),
+             scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("SPL scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") + 
+  ggtheme()
+
+ # ggsave("figv06/treg_quant_diet_SPL_ttest.svg", width = 32, height = 9, units = "cm")
+
+ggsave("figv06/treg_quant_diet_SPL_ttest.png", width = 32, height = 9, units = "cm")
+```
+
+
+
+# Treg FACS 
+
+## Treg 6 clusters
+
+```{r}
+hm <- read_xlsx("../../../Project Funda NOD/FACS/Final_analysis/HighDim/240626_treg_6clusters_heatmap.xlsx")
+
+hm_map <- hm %>% column_to_rownames("Cluster") %>% as.matrix()
+
+hm_map
+
+pheatmap(hm_map, main = "", 
+         scale = "column", cluster_cols = T, cluster_rows = T,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+
+pheatmap(hm_map[c(4,3,2,1,6,5),c(5,6,1,2,4,3)], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12, width = 4, height = 3)
+
+pheatmap::pheatmap(hm_map[c(4,3,2,1,6,5),c(5,6,1,2,4,3)], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12, width = 4, height = 3,
+         filename = "figs/heatmap_cluster_FACS_Treg.pdf")
+
+getwd()
+```
+
+```{r}
+high_dim <- read_excel("G:/48_lab/Project Funda NOD/FACS/Final_analysis/HighDim/240626_treg_6clusters.xlsx")
+
+
+high_dim <- t(high_dim) %>% as.data.frame() %>% rownames_to_column("sample")
+
+high_dim
+high_dim <- high_dim[2:217,]
+high_dim
+colnames(high_dim) <- c("population", "value")
+
+high_dim
+high_dim$population <- sub(pattern = "X-CE_Set_02b6dd_", 
+                           replacement = "cluster",
+                            x = high_dim$population)
+high_dim$population <- sub(pattern = "\\| Freq. of Parent", 
+                           replacement = "",
+                            x = high_dim$population)
+
+high_dim
+
+
+high_dim <- high_dim %>% separate(population, into = c("sample","cluster"), 
+                                  sep = "/", remove = F) %>% mutate(
+                                    value = sub(value, pattern = ",", replacement = ".")
+                                  ) %>% mutate(value = as.numeric(value))
+
+high_dim <- high_dim %>% filter(!is.na(cluster))
+
+
+high_dim
+```
+
+
+```{r fig.width=12, fig.height=4}
+md <- read_excel("G:/48_lab/Project Funda NOD/FACS/Final_analysis/HighDim/240626_treg_14clusters_metadata.xlsx")
+
+high_dim2 <- left_join(high_dim, md)
+
+high_dim2
+
+high_dim2 %>% 
+  dplyr::filter(Tissue == "SPL") %>% 
+  ggplot(aes(x = Diet, y = value)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~cluster, scales = "free", ncol = 7) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Spleen Treg FACS") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+#ggsave("figs/spl_facs_treg.svg", width = 36, height = 9.5, units = "cm")
+```
+
+
+```{r}
+high_dim2 %>% 
+  dplyr::filter(Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = value)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~cluster, scales = "free", ncol = 7) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN FACS Treg") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+ggsave("figs/pln_facs_treg.svg", width = 36, height = 9.5, units = "cm")
+```
+
+```{r}
+high_dim2 %>% 
+  ggplot(aes(x = Tissue, y = value)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Tissue), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Tissue)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~cluster, scales = "free", ncol = 7) +
+  scale_fill_manual(values = c("#56ac00ff","#5fd3bcff","#4a6ca3ff")) + 
+  scale_color_manual(values = c("#56ac00ff","#5fd3bcff","#4a6ca3ff")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN FACS Treg") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+ggsave("figs/facs_treg_tissue.svg", width = 38, height = 9.5, units = "cm")
+```
+
+## Treg clones 
+
+```{r}
+FeaturePlot(tregs_tfh, reduction = "umap", features = "log_clone_abundance")
+
+FeaturePlot(subset(tregs_tfh, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
+
+```
+
+
+```{r}
+metadata_6 <- tregs_tfh@meta.data
+rownames(metadata_6) <- colnames(tregs_tfh)
+
+metadata_6 <- metadata_6 %>% mutate(
+  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
+  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
+)
+
+clone_table_tregs <- metadata_6 %>%
+  dplyr::group_by(factor(clone_aa)) %>%
+          dplyr::summarize(n = n(), sum = sum()) %>%
+    arrange(desc(n))
+
+clone_table_tregs %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+```
+
+
+```{r fig.width=20, fig.height=35}
+plot_list <- list()
+
+for(i in 2:15){
+ 
+plot_list[[i]] <-  DimPlot(tregs_tfh, split.by = "Diet",
+        cells.highlight = colnames(tregs_tfh)[which(tregs_tfh$clone_aa == pull(clone_table_tregs, `factor(clone_aa)`)[i])],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = pull(clone_table_tregs, `factor(clone_aa)`)[i], pattern = "CDR3a", replacement = "\nCDR3a"))
+}
+
+cowplot::plot_grid(plotlist = plot_list[2:15], ncol = 2)
+```
+
+# Tgd and unconventional
+
+```{r }
+DimPlot(funda_merge, group.by = "annotations_fine", label = T)
+DimPlot(funda_merge, group.by = "seurat_clusters", label = T)
+
+
+tgd <- subset(funda_merge, seurat_clusters %in% c(9))
+
+ tgd <- NormalizeData(object = tgd)
+  tgd <- ScaleData(tgd, verbose = FALSE)
+  tgd <- FindVariableFeatures(tgd, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  tgd <- RunPCA(tgd, npcs = 10, verbose = FALSE)
+  tgd <- RunUMAP(tgd, reduction = "pca", dims = 1:10)
+  tgd <- FindNeighbors(tgd, dims = 1:10)
+  tgd <- FindClusters(tgd, resolution = 0.5)
+  DimPlot(tgd, label = T)
+
+  
+FeaturePlot(tgd, features = c("Sell", "Cx3cr1"))
+FeaturePlot(tgd, features = c("Sell", "Klrg1"))
+FeaturePlot(tgd, features = c("Cd8a", "Trdc"))
+FeaturePlot(tgd, features = c("Trac", "Tgfb1"))
+
+
+FeaturePlot(funda_merge, features = c("Trac", "Tgfb1"))
+
+
+```
+
+
+```{r }
+FeaturePlot(tgd, features = c("Trdc"), pt.size = 12, raster = T,
+        raster.dpi = c(1300,1000)) + ggtheme()
+ggsave("figv06/tgd_Trdc.svg", width = 13, height = 10, units = "cm")
+
+DimPlot(tgd, cells.highlight = colnames(subset(tgd, cdr3_A1 == "CVVGDRGSALGRLHF")), pt.size = 12, raster = T,
+        raster.dpi = c(1200,900)) + ggtheme() + NoLegend()
+ggsave("figv06/tgd_iNKT.svg", width = 12, height = 9, units = "cm")
+ggsave("figv06/tgd_iNKT.png", width = 12, height = 9, units = "cm")
+```
+
+
+```{r }
+DimPlot(tgd, group.by = "Tissue") 
+  DimPlot(tgd, group.by = "Diet") 
+
+  grep(rownames(tgd), pattern = "Trg", value=  T)
+```
+
+
+## Markers
+
+```{r}
+mrk <- FindAllMarkers(tgd, only.pos = T)
+
+markers_tgd <- FindAllMarkers(tgd, only.pos = T)
+
+markers_tgd
+write.csv(markers_tgd, "240806_markers_tgd.csv")
+```
+
+
+```{r  fig.height = 4, fig.width = 5}
+funda_merge$tgd <- funda_merge$seurat_clusters %in% c(9)
+
+DimPlot(funda_merge, group.by = "tgd", cols = c("grey78","#a05a2cff"))
+
+
+
+DimPlot(tgd, cols = c(
+ #"#b9ddf1", 
+  #"#b3e0a6",
+  "#89b8da", 
+  #"#6a9bc3", 
+  "#75bc69",
+  #"#4878a6" ,
+  
+  #"#92c0df",
+  "#F28E2B" ,
+  "#FFBE7D",
+  "#9D7660" ,
+  "#B07AA1"), pt.size = 12, raster = T,
+        raster.dpi = c(900,900)) + ggtheme()
+ggsave("fig/tgd_dimplot.svg", width = 8, height = 5.5, units = "cm")
+
+```
+
+
+```{r}
+DimPlot(tgd)
+
+tgd$cdr3_A1
+DimPlot(tgd, cells.highlight = colnames(subset(tgd, cdr3_A1 == "CVVGDRGSALGRLHF")))
+FeaturePlot(tgd, features = "Il23r")
+FeaturePlot(tgd, features = "Ifng")
+FeaturePlot(tgd, features = "Tbx21")
+FeaturePlot(tgd, features = "Il4")
+FeaturePlot(tgd, features = "Ccr6")
+FeaturePlot(tgd, features = "Zbtb16")
+FeaturePlot(tgd, features = "Ncr1")
+
+  grep(pattern = "Ifng", rownames(tgd), value = T)
+```
+
+
+```{r}
+avgexp = AverageExpression(nkt, features = c("Il4", "Ifng", "Gata3", "Tbx21","Il23r","Ccr6"),
+                           return.seurat = F, group.by = "sample", 
+                          assay = "RNA")
+
+pheatmap(t(avgexp$RNA), main = "",
+         scale = "column", cluster_cols = T, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+                  fontsize = 12)
+```
+
+
+
+
+
+```{r fig.width = 9, fig.height = 3}
+avgexp = AverageExpression(tgd, features = c("Sell","Cd27","Id3","Trdc","Trgv2","Itga4","Klrd1","Sell",
+                                             "Gzmb","Gzmk",
+                                             "Pdcd1","Eomes","Cd160","Klre1",
+                                             
+                                             "Tbx21","Ifng","Il4","Cxcr6","Cxcr3","Fasl","Id2","Cd44","Il2ra","Icos","Il7r","Gata3","Zbtb16","Rorc", "Klrg1",
+                                             "Ctla4","Nrp1"                                             ),
+                           return.seurat = F, group.by = "seurat_clusters", 
+                          assay = "RNA")
+
+
+
+pheatmap(t(avgexp$RNA)[c(1,4,5,2,3),], main = "",
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+                  fontsize = 12)
+
+
+pheatmap(t(avgexp$RNA)[c(1,4,5,2,3),], main = "",
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
+         border_color = "white",
+         fontsize = 12, 
+        filename = "figv06/heatmap_tgd_v06.pdf",
+         width = 6, height = 2.2,)
+```
+
+
+
+
+
+```{r}
+
+seurat_meta_data <- tgd@meta.data
+seurat_meta_data$MouseID2 <- paste(str_replace_all(string = seurat_meta_data$MouseID, 
+                                            pattern = "Mouse_", 
+                                            replacement = ""), seurat_meta_data$Tissue)
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, seurat_clusters, MouseID2, Tissue) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+df4
+
+df4 %>% 
+  dplyr::filter(Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Spleen scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", 
+                             method = "t.test", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+  ggsave("figs/tgd_diet_spleen_ttest.png", width = 25, height = 9, units = "cm")
+
+df4 %>% 
+  dplyr::filter(Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", method = "t.test", 
+                             size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+  ggsave("figs/tgd_diet_pLN_ttest.png", width = 22, height = 9, units = "cm")
+
+  
+  write.csv(df4, "pLN_mw.csv")
+```
+
+
+### Freq from all cells 
+
+
+```{r}
+funda_merge$barcode <- colnames(funda_merge)
+df1 <- funda_merge@meta.data %>% dplyr::select(barcode, MouseID, Tissue, Diet)
+
+df1
+
+tgd$barcode <- colnames(tgd)
+df2 <- tgd@meta.data %>% dplyr::select(barcode, seurat_clusters)
+
+df3 <- left_join(df1, df2)
+
+df3 <- df3 %>% mutate(seurat_clusters = ifelse(is.na(seurat_clusters),"Other",paste0("Cl. ",seurat_clusters)))
+
+
+seurat_meta_data <- df3
+seurat_meta_data$MouseID2 <- paste(str_replace_all(string = seurat_meta_data$MouseID, 
+                                            pattern = "Mouse_", 
+                                            replacement = ""), seurat_meta_data$Tissue)
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, seurat_clusters, MouseID2, Tissue) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+df4
+```
+
+
+```{r fig.width=12, fig.height=4}
+df4 %>% 
+  dplyr::filter(Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Spleen scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+  #ggsave("figs/tgd_diet_spleen.svg", width = 25, height = 9, units = "cm")
+
+df4 %>% 
+  dplyr::filter(Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+  #ggsave("figs/tgd_diet_pLN.svg", width = 22, height = 9, units = "cm")
+
+```
+
+## DE NKT1 NKT2
+
+```{r}
+DimPlot(tgd, label = T, label.size = 12)
+deg_nkt <- FindMarkers(tgd, ident.1 = 1, ident.2 = 2)
+
+deg_nkt
+
+write.csv(deg_nkt, "../2022-10-17_Funda_NOD/tables/deg_nkt.csv")
+
+
+FeaturePlot(tgd, features = c("Rorc","Xcl1","Ccl5"))
+```
+
+
+### Quantification tissue
+
+```{r}
+seurat_meta_data <- tgd@meta.data
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue)) %>% 
+  group_by(MouseID_tissue, seurat_clusters) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, Tissue) %>% 
+  unique() %>% 
+  mutate(MouseID_tissue = paste(MouseID, Tissue))
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+df4 %>% 
+  ggplot(aes(x = factor(Tissue, labels = c("pLN", "SPL")), y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Tissue), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Tissue)) + theme_classic() + xlab("Group") +  
+  theme_classic() +
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Treg scRNAseq by tissue") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme() +
+  scale_color_manual(values = c("#5fd3bcff","#4a6ca3ff")) + 
+  scale_fill_manual(values = c("#5fd3bcff","#4a6ca3ff")) +
+  facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
+  ylim(0,NA) +
+  ylab("Frequency") +
+  xlab("Condition") 
+
+  ggsave("figs/tgd_quant_tissue.svg", width = 25, height = 9, units = "cm")
+
+```
+
+# Integration with published datasets
+
+## Our atlas data
+
+
+## Schietinger 2022
+
+Read data from Schietinger 2022 Nature
+
+```{r}
+schietinger <- readRDS("~/PRIMUS/data/48_lab/Project scRNAseq/Analysis of previously published data/028_GSE151652_NOD_Dia/Processed/processed_from_publication/GSE151652_sce_integrated_pLNSamples_filtered.rds")
+
+source("~/PRIMUS/data/48_lab/Project scRNAseq/Scripts Verca/2022-10-17_Funda_NOD/VDJ_utilities.R")
+schietinger <- as.Seurat(schietinger)
+
+```
+
+```{r}
+tcr_seq_schietinger <- readRDS("~/PRIMUS/data/48_lab/Project scRNAseq/Analysis of previously published data/028_GSE151652_NOD_Dia/Processed/processed_from_publication/GSE151652_tcr_perCell_pairedSamples_newCID_2021-05.rds")
+
+md_schietinger <- schietinger@meta.data 
+md_schietinger$cell <- colnames(schietinger)
+md_schietinger <- left_join(md_schietinger, tcr_seq_schietinger)
+
+schietinger@meta.data <- md_schietinger
+rownames(schietinger@meta.data) <- colnames(schietinger)
+
+schietinger <- NormalizeData(object = schietinger)
+  schietinger <- ScaleData(schietinger, verbose = FALSE)
+  schietinger <- FindVariableFeatures(schietinger, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  schietinger <- RunPCA(schietinger, npcs = 10, verbose = FALSE)
+  schietinger <- RunUMAP(schietinger, reduction = "pca", dims = 1:10)
+  schietinger <- FindNeighbors(schietinger, dims = 1:10)
+  schietinger <- FindClusters(schietinger, resolution = 0.6)
+  DimPlot(schietinger, label = T)
+  
+```
+
+Process the TCR data from Schietinger to be compatible with ours.
+
+```{r}
+
+md_schietinger2 <- md_schietinger %>%
+  separate(
+    chains,
+    into = c("chain1", "chain2", "chain3", "chain4"),
+    sep = ";",
+    remove = F) %>%
+  separate(
+    cdr3_nt,
+    into = c("cdr3_nt1", "cdr3_nt2", "cdr3_nt3", "cdr3_nt4"),
+    sep = ";",
+    remove = F) %>%
+  separate(
+    cdr3,
+    into = c("cdr31", "cdr32", "cdr33", "cdr34"),
+    sep = ";",
+    remove = F) %>%
+  separate(
+    v_gene,
+    into = c("v_gene1", "v_gene2", "v_gene3", "v_gene4"),
+    sep = ";",
+    remove = F) %>%
+  separate(
+    d_gene,
+    into = c("d_gene1", "d_gene2", "d_gene3", "d_gene4"),
+    sep = ";",
+    remove = F) %>%
+  separate(
+    j_gene,
+    into = c("j_gene1", "j_gene2", "j_gene3", "j_gene4"),
+    sep = ";",
+    remove = F) %>%
+  mutate(
+    cdr3_A1 = case_when(
+      n_chains == 1 & chain1 == "TRA" ~ cdr31,
+      n_chains == 2 ~ cdr31,
+      n_chains == 3 &
+        chain2 == "TRA" ~ cdr31,
+      TRUE ~ NA_character_),
+    cdr3_A1_nt = case_when(
+      n_chains == 1 & chain1 == "TRA" ~ cdr3_nt1,
+      n_chains == 2 ~ cdr3_nt1,
+      n_chains == 3 &
+        chain2 == "TRA" ~ cdr3_nt1,
+      TRUE ~ NA_character_),
+    cdr3_A2 = case_when(n_chains == 3 &
+                          chain2 == "TRA" ~ cdr32,
+                        TRUE ~ NA_character_),
+    cdr3_A2_nt = case_when(n_chains == 3 &
+                             chain2 == "TRA" ~ cdr3_nt2,
+                           TRUE ~ NA_character_),
+    cdr3_B = case_when(
+      n_chains == 1 & chain1 == "TRB" ~ cdr31,
+      n_chains == 2 ~ cdr32,
+      n_chains == 3 &
+        chain2 == "TRA" ~ cdr33,
+      TRUE ~ NA_character_),
+    cdr3_B_nt = case_when(
+      n_chains == 1 & chain1 == "TRB" ~ cdr3_nt1,
+      n_chains == 2 ~ cdr3_nt2,
+      n_chains == 3 &
+        chain2 == "TRA" ~ cdr3_nt3,
+      TRUE ~ NA_character_),
+    v_gene_A1 = case_when(
+      n_chains == 1 & chain1 == "TRA" ~ v_gene1,
+      n_chains == 2 ~ v_gene1,
+      n_chains == 3 &
+        chain2 == "TRA" ~ v_gene1,
+      TRUE ~ NA_character_),
+    v_gene_A2 = case_when(n_chains == 3 &
+                            chain2 == "TRA" ~ v_gene2,
+                          TRUE ~ NA_character_),
+    v_gene_B = case_when(
+      n_chains == 1 & chain1 == "TRB" ~ v_gene1,
+      n_chains == 2 ~ v_gene2,
+      n_chains == 3 &
+        chain2 == "TRA" ~ v_gene3,
+      TRUE ~ NA_character_),
+    j_gene_A1 = case_when(
+      n_chains == 1 & chain1 == "TRA" ~ j_gene1,
+      n_chains == 2 ~ j_gene1,
+      n_chains == 3 &
+        chain2 == "TRA" ~ j_gene1,
+      TRUE ~ NA_character_),
+    j_gene_A2 = case_when(n_chains == 3 &
+                            chain2 == "TRA" ~ j_gene2,
+                          TRUE ~ NA_character_),
+    j_gene_B = case_when(
+      n_chains == 1 & chain1 == "TRB" ~ j_gene1,
+      n_chains == 2 ~ j_gene2,
+      n_chains == 3 &
+        chain2 == "TRA" ~ j_gene3,
+      TRUE ~ NA_character_),
+    d_gene_A1 = case_when(
+      n_chains == 1 & chain1 == "TRA" ~ d_gene1,
+      n_chains == 2 ~ d_gene1,
+      n_chains == 3 &
+        chain2 == "TRA" ~ d_gene1,
+      TRUE ~ NA_character_),
+    d_gene_A2 = case_when(n_chains == 3 &
+                            chain2 == "TRA" ~ d_gene2,
+                          TRUE ~ NA_character_),
+    d_gene_B = case_when(
+      n_chains == 1 & chain1 == "TRB" ~ d_gene1,
+      n_chains == 2 ~ d_gene2,
+      n_chains == 3 &
+        chain2 == "TRA" ~ d_gene3,
+      TRUE ~ NA_character_))
+
+schietinger@meta.data <- md_schietinger2
+rownames(schietinger@meta.data) <- colnames(schietinger)
+```
+
+# Collier 2023
+
+```{r}
+ collier <- readRDS("~/PRIMUS/data/48_lab/Project scRNAseq/Analysis of previously published data/075_Collier_NOD/Processed/GSE228233_all_cells_integrated.rds")
+
+DimPlot(collier, label = T)
+
+collier$schietinger_NRPv7_tetramer_specificity
+```
+
+```{r}
+colnames(collier@meta.data)
+```
+
+```{r}
+md_collier <- collier@meta.data
+
+md_collier2 <- md_collier %>%
+   mutate(
+    cdr3_A1 = TRA.cdr3,
+    cdr3_A2_nt = TRA.cdr3_nt,
+    cdr3_B = TRB.cdr3,
+    cdr3_B_nt = TRB.cdr3_nt,
+    v_gene_A1 = TRA.v_gene,
+   v_gene_B = TRB.v_gene,
+    j_gene_A1 = TRA.j_gene,
+    j_gene_B = TRB.j_gene,
+    d_gene_A1 = TRA.d_gene,
+    d_gene_B = TRB.d_gene)
+
+collier@meta.data <- md_collier2
+rownames(collier@meta.data) <- colnames(collier)
+```
+
+```{r}
+DimPlot(collier, group.by = "d_gene_B")
+
+collier$annotation <- Idents(collier)
+Idents(collier) %>% table
+```
+
+
+```{r}
+collier$Study <- "Collier"
+schietinger$Study <- "Schietinger"
+funda_merge$Study <- "Lab48"
+
+
+schietinger@assays$RNA <- schietinger@assays$originalexp
+
+all.nod <- list(funda_merge, collier, schietinger)
+
+all.nod
+
+all.nod <- merge(funda_merge, c(collier, schietinger))
+all.nod <- SplitObject(all.nod, split.by = "Study")
+
+
+merged.list <- lapply(X = all.nod, FUN = function(x) {
+    DefaultAssay(x)  <- "RNA"
+    x$barcode  <- colnames(x)
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 800)
+})
+
+features <- SelectIntegrationFeatures(object.list = merged.list)
+merged.list <- lapply(X = merged.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+
+nod.anchors <- FindIntegrationAnchors(object.list = merged.list, anchor.features = features, reduction = "rpca")
+
+# this command creates an 'integrated' data assay
+nod.combined <- IntegrateData(anchorset = nod.anchors)
+
+# Run the standard workflow for visualization and clustering
+nod.combined <- ScaleData(nod.combined, verbose = FALSE)
+nod.combined <- RunPCA(nod.combined, npcs = 10, verbose = FALSE)
+nod.combined <- RunUMAP(nod.combined, reduction = "pca", dims = 1:10)
+
+DimPlot(nod.combined)
+
+options(repr.plot.width = 7, repr.plot.height = 6)
+
+DimPlot(nod.combined, group.by = "Study")
+DimPlot(nod.combined, group.by = "annotations_fine", label = T, split.by = "Study")
+DimPlot(nod.combined, group.by = "annotations", label = T)
+
+```
+
+
+```{r}
+
+collier <- subset(collier, annotation != "Acinar_contaminated")
+DimPlot(collier)
+
+collier$Study <- "Collier"
+schietinger$Study <- "Schietinger"
+funda_merge$Study <- "Lab48"
+collier$annotation %>% table
+
+schietinger@assays$RNA <- schietinger@assays$originalexp
+
+all.nod <- merge(funda_merge, c(collier, schietinger))
+all.nod  <- SplitObject(all.nod, split.by = "Study")
+
+# normalize and identify variable features for each dataset independently
+merged.list <- lapply(X = all.nod, FUN = function(x) {
+    DefaultAssay(x)  <- "RNA"
+    x$barcode  <- colnames(x)
+    x <- NormalizeData(x)
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 800)
+})
+
+nod.combined <- Run.STACAS(merged.list, dims = 1:12)
+nod.combined <- RunUMAP(nod.combined, dims = 1:12) 
+
+DimPlot(nod.combined, group.by = "Study")
+DimPlot(nod.combined, group.by = "annotations_fine", label = T, split.by = "Study")
+DimPlot(nod.combined, group.by = "annotation", label = T)
+
+```
+
+
+
+
+# Integration CD8 only
+
+## CD8 and CD4 separately
+
+1. Remove unconventional T cells
+
+```{r}
+convT <- subset(funda_merge, Immgen_annot_single_main == "T cells" & seurat_clusters %in% c(0:8,11:18))
+
+ convT <- NormalizeData(object = convT)
+  convT <- ScaleData(convT, verbose = FALSE)
+  convT <- FindVariableFeatures(convT, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  convT <- RunPCA(convT, npcs = 10, verbose = FALSE)
+  convT <- RunUMAP(convT, reduction = "pca", dims = 1:10)
+  convT <- FindNeighbors(convT, dims = 1:10)
+  convT <- FindClusters(convT, resolution = 1.1)
+
+   cd4_expression <- convT@assays$RNA@counts[4934,] > 0
+  cd8a_expression <- convT@assays$RNA@counts[4658,] > 0
+  cd8b_expression <- convT@assays$RNA@counts[4654,] > 0
+  
+  md <- convT@meta.data
+  md$cd4_expression <- cd4_expression
+  md$cd8a_expression <- cd8a_expression
+  md$cd8b_expression <- cd8b_expression
+
+  md <-
+    md %>% mutate(
+      cd4_or_cd8 = if_else(
+        cd4_expression == F & cd8a_expression == T & cd8b_expression == T,
+        "CD8",
+        if_else(
+          cd4_expression == T &
+            cd8a_expression == F & cd8b_expression == F,
+          "CD4",
+          "Unclear")))
+  
+  convT@meta.data <- md
+  
+  DimPlot(convT, group.by = "cd4_or_cd8", label = T)
+  
+ md <-
+    md %>% mutate(
+      cd4_or_cd8_2 = if_else(
+        cd4_expression == F & cd8a_expression == T & cd8b_expression == T,
+        "CD8",
+        if_else(
+          cd4_expression == T &
+            cd8a_expression == F &
+            cd8b_expression == F,
+          "CD4",
+          if_else(
+            seurat_clusters %in% c(0, 1, 3, 4, 6, 7, 8, 9, 12, 13, 14, 15),
+            "CD4",
+            "CD8"))))
+  
+  convT@meta.data <- md
+  
+  DimPlot(convT, group.by = "cd4_or_cd8_2", label = T)
+
+
+```
+
+
+## CD8
+
+```{r}
+cd8 <- subset(convT, cd4_or_cd8_2 == "CD8")
+
+ cd8 <- NormalizeData(object = cd8)
+  cd8 <- ScaleData(cd8, verbose = FALSE)
+  cd8 <- FindVariableFeatures(cd8, selection.method = "vst", nfeatures = 1000, 
+                                       verbose = FALSE)
+  cd8 <- RunPCA(cd8, npcs = 10, verbose = FALSE)
+  cd8 <- RunUMAP(cd8, reduction = "pca", dims = 1:10)
+  cd8 <- FindNeighbors(cd8, dims = 1:10)
+  cd8 <- FindClusters(cd8, resolution = 0.3)
+  DimPlot(cd8, label = T)
+  DimPlot(cd8, label = T, group.by = "Diet")
+  DimPlot(cd8, label = T, group.by = "Tissue")
+  
+```
+
+## Stacas Integration
+
+```{r fig.width=20, fig.height=6}
+cd8$source <- "NOD CD8 Exp11"
+nod_atlas$source <- "NOD CD8 Exp05"
+nod_atlas$Tissue <- "Spleen"
+schietinger$source <- "Schietinger 2022"
+
+schietinger[["RNA"]] <- schietinger[["originalexp"]]
+DefaultAssay(schietinger) <- "RNA"
+
+nod_merge <- merge(cd8, c(nod_atlas, schietinger))
+    nod_integrated_cd8 <- SplitObject(nod_merge, split.by = "source")
+    nod_integrated_cd8 <- Run.STACAS(nod_integrated_cd8, dims = 1:10, anchor.features = 1200)
+    set.seed(1024)
+    nod_integrated_cd8 <- RunUMAP(nod_integrated_cd8, dims = 1:10)
+     nod_integrated_cd8 <- FindNeighbors(nod_integrated_cd8, dims = 1:10)
+  nod_integrated_cd8 <- FindClusters(nod_integrated_cd8, resolution = 0.8)
+
+    
+# saveRDS(nod_integrated_cd8, "data/nod_integrated_cd8.rds")
+      
+DimPlot(nod_integrated_cd8, group.by = c("source"), split.by = "source")
+DimPlot(nod_integrated_cd8, group.by = c("population"), split.by = "source")
+DimPlot(nod_integrated_cd8, group.by = c("Tissue"), split.by = "source")
+```
+
+Make compatible metadata
+
+```{r}
+md <- nod_integrated_cd8@meta.data
+
+md <- md %>% mutate(MouseID_2 = if_else(source == "NOD CD8 Exp05", mouse_number,
+                              if_else(source == "NOD CD8 Exp11", MouseID,
+                                              Mouse)),
+                    diabetes_2 = if_else(source == "NOD CD8 Exp05", if_else(dia == "no","healthy","dia"),
+                              if_else(source == "NOD CD8 Exp11", Diet,
+                                              Diabetic.status)))
+```
+
+```{r}
+df4 <- md %>% 
+  mutate(MouseID_tissue = paste(MouseID_2, Tissue)) %>% 
+  group_by(MouseID_tissue, seurat_clusters) %>% 
+ summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) 
+
+df4 %>% group_by(MouseID_tissue) %>% summarise(sum = sum(freq))
+
+md_to_join <- md %>% 
+  mutate(MouseID_tissue = paste(MouseID_2, Tissue)) %>% 
+  dplyr::select(source, MouseID_tissue, diabetes_2, age_weeks, Tissue) %>% 
+  unique
+  
+df4 <- df4 %>% left_join(md_to_join)
+```
+
+
+```{r fig.width=19, fig.height=3}
+p2 <-    df4 %>%
+  unique %>% 
+   filter(source == "NOD CD8 Exp05") %>% 
+   mutate(age = if_else(age_weeks < 10, "6-8wk", "16-27wk")) %>% 
+ggplot(aes(x = factor(diabetes_2, levels = c("healthy","dia")), y = freq*100)) + 
+ geom_boxplot(outlier.shape = NA) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + geom_jitter(position=position_jitter(0.2), size = 2, aes(color = factor(age))) + scale_color_manual(values= c("firebrick","lightskyblue3")) + 
+   theme_minimal() + 
+      facet_wrap(~seurat_clusters, scales = "free", ncol = 12) +
+      theme(axis.text.x = element_text(angle = 90))
+ 
+ 
+  p3 <-    df4 %>%
+   filter(source == "NOD CD8 Exp11" & Tissue == "pLN") %>% 
+ggplot(aes(x = factor(diabetes_2), y = freq*100)) + 
+ geom_boxplot(outlier.shape = NA) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + geom_jitter(position=position_jitter(0.2), size = 2, aes(color = factor(diabetes_2))) + scale_color_manual(values= c("firebrick","lightskyblue3")) + 
+   theme_minimal() + 
+     facet_wrap(~seurat_clusters, scales = "free", ncol = 12) +
+       theme(axis.text.x = element_text(angle = 90))
+  
+   p3b <-    df4 %>%
+   filter(source == "NOD CD8 Exp11" & Tissue == "Spleen") %>% 
+ggplot(aes(x = factor(diabetes_2), y = freq*100)) + 
+ geom_boxplot(outlier.shape = NA) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + geom_jitter(position=position_jitter(0.2), size = 2, aes(color = factor(diabetes_2))) + scale_color_manual(values= c("firebrick","lightskyblue3")) + 
+   theme_minimal() + 
+     facet_wrap(~seurat_clusters, scales = "free", ncol = 12) +
+       theme(axis.text.x = element_text(angle = 90))
+  
+   p4 <-    df4 %>%
+   filter(source == "Schietinger 2022") %>% 
+ggplot(aes(x = factor(diabetes_2), y = freq*100)) + 
+ geom_boxplot(outlier.shape = NA) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + geom_jitter(position=position_jitter(0.2), size = 2, aes(color = factor(Tissue))) + scale_color_manual(values= c("firebrick","lightskyblue3")) + 
+   theme_minimal() + 
+      facet_wrap(~seurat_clusters, scales = "free", ncol = 12) +
+      theme(axis.text.x = element_text(angle = 90))
+  
+   
+   p2
+   p3
+   p3b
+   p4
+```
+
+
+## TCR repertoires in merged dataset
+
+## Clone abundance
+```{r}
+metadata_6 <- nod_integrated_cd8@meta.data
+rownames(metadata_6) <- colnames(nod_integrated_cd8)
+
+metadata_6 <- metadata_6 %>% mutate(
+  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
+  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
+)
+
+clone_table <- metadata_6 %>%
+  dplyr::group_by(factor(clone_aa)) %>%
+          dplyr::summarize(n = n(), sum = sum()) %>%
+    arrange(desc(n))
+
+clone_table
+```
+
+
+```{r}
+top_88_clones <- pull(clone_table, `factor(clone_aa)`)[2:88]
+
+metadata_7 <- metadata_6 %>% filter(clone_aa %in% top_88_clones) %>% group_by(clone_aa, source) %>% tally %>% pivot_wider(names_from = "source", values_from = n, values_fill = 0) 
+metadata_7
+
+metadata_7 %>% mutate(h1 = if_else(`NOD CD8 Exp05`>0,1,0), 
+                      h2 = if_else(`NOD CD8 Exp11`>0,1,0), 
+                      h3 = if_else(`schietinger 2022`>0,1,0)) %>% 
+  mutate(sum = sum(h1,h2,h3)) %>% dplyr::select(1,2,3,4,8) %>% arrange(desc(sum))
+```
+
+Two important receptors:
+CDR3b CASSDSQNTLYF CDR3a CAMRDSGGSNAKLTF
+CDR3b CASSRDSSYEQYF CDR3a CAMRLSGGSNAKLTF
+
+
+```{r}
+DimPlot(funda_merge, 
+        cells.highlight = colnames(funda_merge)[which(funda_merge$clone_aa == "CDR3b CASSDSQNTLYF CDR3a CAMRDSGGSNAKLTF")],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = "CDR3b CASSDSQNTLYF CDR3a CAMRDSGGSNAKLTF", pattern = "CDR3a", replacement = "\nCDR3a"))
+
+DimPlot(nod_integrated_cd8, 
+        cells.highlight = colnames(nod_integrated_cd8)[which(nod_integrated_cd8$clone_aa == "CDR3b CASSDSQNTLYF CDR3a CAMRDSGGSNAKLTF")],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = "CDR3b CASSDSQNTLYF CDR3a CAMRDSGGSNAKLTF", pattern = "CDR3a", replacement = "\nCDR3a"))
+```
+
+
+```{r}
+DimPlot(funda_merge, 
+        cells.highlight = colnames(funda_merge)[which(grepl(funda_merge$cdr3_A1, pattern = "CAMRDSGGSNAKLTF"))],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = "TCR including CAMRDSGGSNAKLTF", pattern = "CDR3a", replacement = "\nCDR3a"))
+
+clone_table %>% filter(grepl(`factor(clone_aa)`, pattern = "CAMR.SGGSNAKLTF"))
+
+DimPlot(funda_merge, 
+        cells.highlight = colnames(funda_merge)[which(grepl(funda_merge$cdr3_A1, pattern = "CAMR.SGGSNAKLTF"))],
+        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = "TCR including CAMR.SGGSNAKLTF", pattern = "CDR3a", replacement = "\nCDR3a"))
+```
+
+```{r}
+metadata_6$test <- 0
+metadata_6 <- metadata_6 %>% group_by(test, clone_aa) %>% mutate(clone_abundance = as.numeric(n()))
+
+
+metadata_6 <- as.data.frame(metadata_6 %>% mutate(clone_abundance = as.numeric(ifelse(clone_abundance==4991,NA_integer_,clone_abundance))) %>%
+  mutate(log_clone_abundance = log(clone_abundance, base = 2)))
+rownames(metadata_6) <- colnames(nod_integrated_cd8)
+
+nod_integrated_cd8@meta.data <- metadata_6
+rownames(nod_integrated_cd8@meta.data) <- colnames(nod_integrated_cd8)
+
+nod_integrated_cd8 <- AddMetaData(nod_integrated_cd8, as.numeric(metadata_6$clone_abundance), "clone_abundance")
+rownames(nod_integrated_cd8@meta.data) <- colnames(nod_integrated_cd8)
+
+FeaturePlot(nod_integrated_cd8, reduction = "umap", features = "log_clone_abundance")
+
+FeaturePlot(subset(nod_integrated_cd8, clone_abundance >=1 & clone_abundance < 4991), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
+#ggsave("fig/Log2CloneAbundance.png", width = 13, height = 8, units = "cm", dpi = 120)
+#ggsave("fig/Log2CloneAbundance.svg", width = 13, height = 8, units = "cm", dpi = 120)
+
+# Clone abundance bar graph
+metadata_6 <- metadata_6 %>%
+  mutate( clone_abundance_group = if_else(clone_abundance>10, "10+",
+                                          if_else(clone_abundance==4, "6-9",
+                                             if_else(clone_abundance==3, "3-5",
+                                             if_else(clone_abundance==2, "2",
+                                             if_else(clone_abundance==1, "1","1"))))))
+
+metadata_6 %>% 
+   ggplot(aes(x = annotations_fine)) + geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + coord_flip() +
+  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+ylab("") + theme_classic() + theme(plot.title = element_text(hjust = 0.5), legend.position="right", panel.border = element_blank(), legend.title = element_blank()) + ggtitle("Clone abundance in clusters")
+
+
+#ggsave("fig/Log2CloneAbundance_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
+#ggsave("fig/Log2CloneAbundance_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
+```
+
+
+# SessionInfo
+
+```{r}
+sessionInfo()
+```
+
