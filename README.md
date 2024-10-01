@@ -5,4 +5,4 @@
 - Part 2: Analysis of flow cytometry data
 - Part 3: Generating the figures for the manuscript
 
-Raw sequencing data were deposited in the Sequence Read Archive (PRJNA1157582)[https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1157582/].
+Raw sequencing data were deposited in the Sequence Read Archive [PRJNA1157582](https://www.ncbi.nlm.nih.gov/bioproject/PRJNA1157582/).
