@@ -1,0 +1,190 @@
+---
+title: "02_Analysis_FACS"
+author: "Veronika Niederlova"
+date: "2024-10-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(ggplot2)
+library(readxl)
+library(dplyr)
+library(cowplot)
+library(gridExtra)
+library(grid)
+library(patchwork)
+library(effectsize)
+
+library(readxl)
+
+
+plt_function2 <- function(df, i, remove_i){
+ 
+  df_filt <- df %>% dplyr::select(1:4,i)
+colnames(df_filt) <- c(colnames(df_filt[1:4]), "value")
+  df_filt$value <- as.numeric(df_filt$value)
+  
+df_filt_iln <- df_filt %>% filter(Tissue == "iLN")
+df_filt_pLN <- df_filt %>% filter(Tissue == "pLN")
+df_filt_SPL <- df_filt %>% filter(Tissue == "SPL")
+
+lab_iLN <- paste("iLN", 
+                  paste0("p-val = ",format(wilcox.test(df_filt_iln$value ~ df_filt_iln$Diet)$p.value, digits = 3)), 
+                  ifelse(i %in% remove_i,"NA",paste0("Cohen's d: ",format(cohens_d(value ~ Diet, data = df_filt_iln)$Cohens_d, digits = 3))), 
+                  sep = "\n")
+lab_pLN <- paste("pLN", 
+                  paste0("p-val = ",format(wilcox.test(df_filt_pLN$value ~ df_filt_pLN$Diet)$p.value, digits = 3)), 
+                  ifelse(i %in% remove_i,"NA",paste0("Cohen's d: ",format(cohens_d(value ~ Diet, data = df_filt_pLN)$Cohens_d, digits = 3))), 
+                  sep = "\n")
+lab_SPL <- paste("SPL", 
+                  paste0("p-val = ",format(wilcox.test(df_filt_SPL$value ~ df_filt_SPL$Diet)$p.value, digits = 3)), 
+                  ifelse(i %in% remove_i,"NA",paste0("Cohen's d: ",format(cohens_d(value ~ Diet, data = df_filt_SPL)$Cohens_d, digits = 3))), 
+                  sep = "\n")
+
+new_labels <- c("iLN" = lab_iLN, "pLN" = lab_pLN, "SPL" = lab_SPL)
+ylimit <- ifelse(min(df_filt$value)<0,min(df_filt$value), 0)
+
+plot <- df_filt %>% 
+  ggplot(aes(x = Diet, y = value)) + 
+ geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Experiment)) + theme_classic() + xlab("Group") +  
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  #scale_fill_manual(values = c("dodgerblue","indianred2")) +
+  facet_wrap(~Tissue, labeller = labeller(Tissue = new_labels), 
+             scales = "free")  + 
+  ylim(0,NA) + 
+ plot_annotation(
+    title = paste(stringr::str_replace_all(string = colnames(df)[i], pattern = "/", replacement = "\n")) ,
+    theme = theme(plot.title = element_text(size = 16), 
+                  plot.subtitle = element_text(size = 16)))  
+
+return(plot)
+}
+
+
+```
+
+## Unified analysis extracellular panels
+
+
+```{r}
+extracellular <- read_excel("G:/48_lab/Project Funda NOD/FACS/Final_analysis/240510_unified_analysis_extracellular_1.xlsx")
+  
+
+df <- extracellular
+df
+```
+
+
+
+```{r}
+
+for(i in c(44)){
+
+   df_filt <- df %>% 
+    dplyr::select(1:4,i)
+  colnames(df_filt) <- c(colnames(df_filt[c(1:4)]), "value")
+  df_filt$value <- as.numeric(df_filt$value)
+
+ df_filt %>% 
+  
+  ggplot(aes(x = Diet,
+             y = value)) +
+  facet_wrap(~Tissue, ncol = 3, scales = "free") +
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) +
+   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, 
+                              method = "t.test", vjust = 0.3, label = "p.format") + 
+      theme(plot.title = element_text(hjust = 0.5, size = 22),
+          axis.line = element_line(colour = "black"), 
+        axis.ticks = element_line(colour = "black")) +
+  ylim(0,NA)+ NoLegend() +
+  plot_annotation(
+    title = paste(stringr::str_replace_all(string = colnames(df)[i], pattern = "/", replacement = "\n")) ,
+    theme = theme(plot.title = element_text(size = 8), 
+                  plot.subtitle = element_text(size = 8))) + ggtheme()
+
+  ggsave(paste0("./results_240821_diet_cd62/",paste0("plot_ttest_",i),".png"), width = 17, height = 12, units = "cm")
+  ggsave(paste0("./results_240821_diet_cd62/",paste0("plot_ttest_",i),".svg"), width = 17, height = 12, units = "cm")
+}
+
+
+```
+
+## Intracellular 
+
+```{r}
+
+intracellular <- read_excel("G:/48_lab/Project Funda NOD/FACS/Final_analysis/240511_unified_analysis_intracellular.xlsx")
+  
+
+df <- intracellular
+df
+
+df <- intracellular %>% dplyr::filter(Experiment != "Exp02")
+df
+```
+
+
+
+```{r}
+
+
+for(i in c(18,19)){
+
+   df_filt <- df %>% 
+    dplyr::select(1:4,i)
+  colnames(df_filt) <- c(colnames(df_filt[c(1:4)]), "value")
+  df_filt$value <- as.numeric(df_filt$value)
+
+ df_filt %>% 
+  
+  ggplot(aes(x = Diet,
+             y = value)) +
+  facet_wrap(~Tissue, ncol = 3, scales = "free") +
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.5) +
+ geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(shape=21, size = 3, position=position_jitter(width = 0.1, height = 0), 
+              aes(fill = Diet)) + theme_classic() + xlab("Group") +  
+  theme(plot.title = element_text(hjust = 0.5), 
+        strip.background = element_blank(),
+        axis.text = element_text(color = "black", size = 16),
+        axis.ticks.x = element_blank(),
+        strip.text = element_text(size = 16)) + 
+  scale_fill_manual(values = c("dodgerblue","indianred2")) +
+   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", 
+                              size = 5, vjust = 0.3, label = "p.format",
+                              method = "t.test") + 
+      theme(plot.title = element_text(hjust = 0.5, size = 22),
+          axis.line = element_line(colour = "black"), 
+        axis.ticks = element_line(colour = "black")) +
+  ylim(0,NA)+ NoLegend() +
+  plot_annotation(
+    title = paste(stringr::str_replace_all(string = colnames(df)[i], pattern = "/", replacement = "\n")) ,
+    theme = theme(plot.title = element_text(size = 8), 
+                  plot.subtitle = element_text(size = 8))) + ggtheme()
+
+  ggsave(paste0("./results_240821_diet/",paste0("plot_ttest_",i),".png"), width = 17, height = 10, units = "cm")
+  ggsave(paste0("./results_240821_diet/",paste0("plot_ttest_",i),".svg"), width = 17, height = 10, units = "cm")
+}
+
+```
+

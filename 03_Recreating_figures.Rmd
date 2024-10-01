@@ -1,0 +1,211 @@
+---
+title: "03_Recreating_figures"
+author: "Veronika Niederlova"
+date: "2024-10-01"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(include = TRUE, warning = FALSE, message = FALSE, error = TRUE, cache = TRUE, cache.lazy = FALSE)
+
+library("Matrix")
+library(Seurat)
+library(pheatmap)
+library(DT)
+library(data.table)
+library(dplyr)
+library(here)
+library(ggplot2)
+library(SingleCellExperiment)
+library(scater)
+library(mclust)
+library(kableExtra)
+library(cowplot)
+library(tidyverse)
+library(reshape)
+library(fgsea)
+library(SingleR)
+library(topGO)
+library(annotate)
+library("org.Mm.eg.db")
+library(biomaRt)
+library(ReactomePA)
+library(patchwork)
+library(STACAS)
+
+convertHumanGeneList2 <- function(x){
+
+require("biomaRt")
+human = useMart("ensembl", dataset = "hsapiens_gene_ensembl", host = "https://dec2021.archive.ensembl.org/")
+mouse = useMart("ensembl", dataset = "mmusculus_gene_ensembl", host = "https://dec2021.archive.ensembl.org/")
+
+genesV2 = getLDS(attributes = c("hgnc_symbol"), filters = "hgnc_symbol", values = x , mart = human, attributesL = c("mgi_symbol"), martL = mouse, uniqueRows=T)
+
+humanx <- unique(genesV2[, 2])
+
+# Print the first 6 genes found to the screen
+print(head(humanx))
+return(humanx)
+}
+
+ggtheme <- function() {
+  theme(
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 20),
+    text = element_text(size = 20, colour = "black"),
+    legend.text = element_text(size = 20),
+    legend.key.size =  unit(10, units = "points")
+    
+  )
+}
+
+
+  
+  reduced_annot  <- function(seurat_object, tier_name, n_cells_to_other){
+    md  <- seurat_object@meta.data
+    tier_name_red  <- paste0(tier_name,"_red")
+    cell_types_keep  <- (md  %>% group_by_at(tier_name)  %>% tally()  %>% arrange(desc(n)) %>% dplyr::filter(n > n_cells_to_other))[[tier_name]]
+    md[[tier_name_red]]  <- if_else(md[[tier_name]] %in% cell_types_keep,as.character(md[[tier_name]]),"Other")
+    seurat_object  <- AddMetaData(seurat_object, metadata = md[[tier_name_red]], tier_name_red)
+    return(seurat_object)
+}
+
+  rank_score_func <- function(df){
+
+df <- df %>% mutate(score = -1*log(p_val_adj+(10^-310))*avg_log2FC*(pct.1/(pct.2+10^-300)))
+
+return(df)
+  }
+  
+```
+
+# Loading data for analysis recapitulation 
+
+```{r}
+funda_merge <- readRDS("./data/seu_merged_nod_mapping.rds")
+```
+
+
+# Figure 1
+
+```{r}
+
+md <- funda_merge@meta.data
+
+md <- md %>% mutate(annotations_fine = recode(seurat_clusters, 
+                                                     "0" = "CD4 Naive",
+                                                     "1" = "CD8 Naive",
+                                                     "2" = "CD4 Naive",
+                                                     "3" = "CD4 Naive",
+                                                     "4" = "CD8 Naive",
+                                                     "5" = "CD4 Naive",
+                                                     "6" = "CD4 Naive",
+                                                     "7" = "CD4 Treg and Tfh",
+                                                     "8" = "CD4 Treg and Tfh",
+                                                     "9" = "Tgd and NKT ",
+                                                     "10" = "NK cells",
+                                                     "11" = "CD4 Treg and Tfh",
+                                                     "12" = "CD4 Egr Myb",
+                                                     "13" = "CD8 ISAGhi",
+                                                     "14" = "CD4 Early act. 41BB CD69",
+                                                     "15" = "CD8 AIMT",
+                                                     "16" = "Proliferating",
+                                                     "17" = "ILC",
+                                                     "18" = "CD8 Egr"))
+
+funda_merge@meta.data <- md
+rownames(funda_merge@meta.data) <- colnames(funda_merge)
+
+```
+
+
+```{r}
+DimPlot(funda_merge, group.by = "annotations_fine", label = F, 
+        raster = T, pt.size = 15, raster.dpi = c(5000,5000)) + 
+  scale_color_manual(values = c(
+  "#6a9bc3", # CD4 Naive
+  "#b3e0a6", # CD8 Naive
+  
+ # "#F28E2B" ,
+  "#F28E2B", #Treg
+  "#9D7660" , #
+  "#B07AA1" ,
+  
+  "#b9ddf1", # "#F1CE63",
+"#24693d",
+   "dodgerblue4",
+  "#86BCB6" ,
+  
+  "indianred2",
+ "#D4A6C8", 
+   "#499894"  ,
+ 
+  "slategray")) + ggtitle("")
+
+
+
+ggsave(create.dir = TRUE, filename = "figures/dimPlot_12clusters.png", width = 20, height = 13, units = "cm")
+ggsave(filename = "figures/dimPlot_12clusters.svg", width = 20, height = 13, units = "cm")
+
+```
+
+
+# 12 clusters heatmap
+
+## Cluster markers
+
+```{r fig.width = 12, fig.height=4}
+markers  <- str_to_sentence(rev(c("TRAC","TRBC1","CD3D","CD4",
+                                  "CCR7","SELL",  "TCF7", "LEF1", "IL7R",
+                                  "MYC","CD69","TNF","TNFRSF9",
+                                  "FOXP3","CTLA4","IL2RA","IL10","CD44",
+                                  "CD8A","Isg15","Ifit1","Irf7",
+                                  "CXCR3","IL2RB","EOMES","Cd160","Id2",
+                                  "TRDC","TRGV2","Cxcr6","Ifng","Xcl1","Kit",
+                                  "GZMB","CX3CR1",
+                                  "TBX21","KLRG1","KLRK1",
+                                  "NCR1","GZMA",
+                                  "Fcer1g",
+                                  "KLRB1A",
+                              "MKI67", "MCM6","CDC6","CDK1"
+                  )))
+
+
+avgexp = AverageExpression(funda_merge, features = markers,
+                           return.seurat = F, group.by = "annotations_fine", 
+                          assay = "RNA")
+
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+pheatmap(t(avgexp$RNA)[c(1,6,8,3,2,7,12,9,4,11,5,10),], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+                  fontsize = 12)
+```
+
+
+
+```{r}
+setwd("G:/48_lab/Project scRNAseq/Scripts Verca/2022-10-17_Funda_NOD/")
+
+options(repr.plot.width = 9.5, repr.plot.height = 2.5)
+pheatmap(t(avgexp$RNA)[c(1,6,8,3,2,7,12,9,4,11,5,10),], main = "", 
+         scale = "column", cluster_cols = F, cluster_rows = F,
+        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
+         border_color = "white",
+        filename = "figv06/heatmap_annotations_v06.pdf",
+        width = 6, height = 2.2, 
+                  fontsize = 9)
+
+```
+
+# Figure 2
+
+# Figure 3
+
+# Figure 4
+
+# Figure 5
+
