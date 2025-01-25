@@ -90,6 +90,8 @@ return(df)
 
 # Loading data for analysis recapitulation 
 
+To recapitulate the analysis with the processed data, please download the processed and annotated object available on Zenodo:
+
 ```{r}
 funda_merge <- readRDS("./data/seu_merged_nod_mapping.rds")
 ```
@@ -125,7 +127,7 @@ Read data from well 3 - Spleen.
 
 ```{r}
 
-seu <- readRDS("G://48_lab/DATA_scRNAseq/Experiments_lab48/Exp11/04_Raw_data/Rds/exp11W3_init.rds")
+seu <- readRDS("data/exp11W3_init.rds")
 
 seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^mt-")
 seu[["percent.rt"]] <- PercentageFeatureSet(seu, pattern = "^Rp[ls]")
@@ -549,7 +551,7 @@ plotCounts(dds, gene="Ccl4", intgroup="Diet")
 Read data from well 4 - pLN
 
 ```{r}
-seu <- readRDS("G://48_lab/DATA_scRNAseq/Experiments_lab48/Exp11/04_Raw_data/Rds/exp11W4_init.rds")
+seu <- readRDS("data/exp11W4_init.rds")
 
 seu[["percent.mt"]] <- PercentageFeatureSet(seu, pattern = "^mt-")
 seu[["percent.rt"]] <- PercentageFeatureSet(seu, pattern = "^Rp[ls]")
@@ -1828,7 +1830,7 @@ write.csv(df5, "SPL_freq.csv")
 
 ```
 
-# DE GFD vs GTD
+# DE GFD vs STD
 
 ```{r}
 DimPlot(funda_merge, group.by = "Diet", cols = c("#92c0df", "indianred3"), shuffle = T)
@@ -1863,6 +1865,9 @@ mrk_de_whole_data
 
 
 mrk_de_whole_data %>% filter(cluster == "Standard") %>% nrow
+
+write.csv(mrk_de_whole_data, "mrk_de_whole_data.csv")
+getwd()
 ```
 
 Spleen vs pLN
