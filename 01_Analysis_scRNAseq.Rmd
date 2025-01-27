@@ -202,7 +202,7 @@ cowplot::plot_grid(DimPlot(seu, group.by = "MouseRNAseq_single_main"),
 seu_spleen <- seu
 
 DimPlot(seu_spleen, group.by = "Immgen_annot_single_main", raster = T, raster.dpi = c(900,900))
-ggsave("./fig/spleen_annotations.svg", width = 16, height = 12, units = "cm")
+#ggsave("./fig/spleen_annotations.svg", width = 16, height = 12, units = "cm")
 
 seu_spleen_filt <- subset(seu_spleen, nFeature_RNA > 750 & percent.mt < 7.5 & seurat_clusters %in% 0:14 &
                           Immgen_annot_single_main %in% c("T cells", "NK cells", "NKT", "Tgd", "ILC")  )
@@ -212,7 +212,7 @@ seu_spleen$keep <- colnames(seu_spleen) %in% colnames(seu_spleen_filt)
 
 DimPlot(seu_spleen, group.by = "keep", raster = T, raster.dpi = c(900,900), pt.size = 3.5, cols = c("red","grey88"))
 
-ggsave("./fig/spleen_qc.svg", width = 13, height = 12, units = "cm")
+#ggsave("./fig/spleen_qc.svg", width = 13, height = 12, units = "cm")
 ```
 
 
@@ -268,7 +268,7 @@ seu_spleen_filt <- NormalizeData(object = seu_spleen_filt)
  seu_spleen_filt <- reduced_annot(seu_spleen_filt, "Immgen_annot_single", n_cells_to_other = 30)
 
 DimPlot(seu_spleen_filt, group.by = "Immgen_annot_single_red", label = T, repel = T) 
-  #ggsave("fig/Immgen_dimplot_spleen_filt_Immgen_single.png", width = 40, height = 20, units = "cm")
+  ##ggsave("fig/Immgen_dimplot_spleen_filt_Immgen_single.png", width = 40, height = 20, units = "cm")
 ```
 
 ## Analysis of spleen clusters
@@ -309,7 +309,7 @@ df4 %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_text(angle = 90)) + ggtheme() 
 
- #ggsave("fig/clusters_boxplots_spleen_filt_Immgen_single.png", width = 27, height = 35, units = "cm")
+ ##ggsave("fig/clusters_boxplots_spleen_filt_Immgen_single.png", width = 27, height = 35, units = "cm")
 ```
 
 Seurat clusters 
@@ -348,7 +348,7 @@ df4 %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_text(angle = 90))
 
- #ggsave("fig/clusters_boxplots_spleen_filt_clusters.png", width = 16, height = 16, units = "cm")
+ ##ggsave("fig/clusters_boxplots_spleen_filt_clusters.png", width = 16, height = 16, units = "cm")
 ```
 
 
@@ -415,7 +415,7 @@ df4 %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_text(angle = 90))
 
-#ggsave("fig/clusters_boxplots_spleen_filt_lymph_clusters.png", width = 20, height = 15, units = "cm")
+##ggsave("fig/clusters_boxplots_spleen_filt_lymph_clusters.png", width = 20, height = 15, units = "cm")
 ```
 
 ## Markers spleen
@@ -429,7 +429,7 @@ markers_spleen %>%
                 bootstrap_options = c("striped", "hover", 
                                       "condensed", "responsive")) %>% 
   scroll_box(width = "100%", height = "400px")
-write.csv(markers_spleen, "markers_spleen.csv", row.names = T)
+#write.csv(markers_spleen, "markers_spleen.csv", row.names = T)
 ```
 
 
@@ -447,7 +447,7 @@ data.table(spl_cl1_vs_cl2) %>%
                                       "condensed", "responsive")) %>% 
   scroll_box(width = "100%", height = "400px")
 
-write.csv(spl_cl1_vs_cl2, "spl_cl1_vs_cl2.csv", row.names = T)
+#write.csv(spl_cl1_vs_cl2, "spl_cl1_vs_cl2.csv", row.names = T)
 
 ```
 
@@ -457,17 +457,17 @@ write.csv(spl_cl1_vs_cl2, "spl_cl1_vs_cl2.csv", row.names = T)
 FeaturePlot(seu_spleen_filt_lymph, features = c("Cd3d","Cd4","Cd8a","Sell","Ccl5",
                                        "Foxp3","Il2ra","Pdcd1", "Cxcr5","Klrd1","Klrk1",
                                        "Isg15","Srm","Klrg1", "Mki67"), ncol = 5)
-#ggsave("fig/markers1_seu_spleen_filt_lymph.png", width = 20, height = 11)
+##ggsave("fig/markers1_seu_spleen_filt_lymph.png", width = 20, height = 11)
 
 FeaturePlot(seu_spleen_filt_lymph, features = c("Ifng","Tbx21","Eomes","Bcl6","Ccr8",
                                        "Ccr10","Cxcr3","Tox", "Lag3","Ikzf2","Id2",
                                        "Id3","Prdm1","Itgae", "Cd69"), ncol = 5)
-#ggsave("fig/markers2_seu_spleen_filt_lymph.png", width = 20, height = 11)
+##ggsave("fig/markers2_seu_spleen_filt_lymph.png", width = 20, height = 11)
 
 FeaturePlot(seu_spleen_filt_lymph, features = c("Gata3","Rorc","Il23r","Cxcr6","Cd27",
                                        "Entpd1","Izumo1r","Tnfrsf9", "Tnfrsf18","Tnfrsf14","Il17a",
                                        "Gzma","Gzmb","Gzmk", "Gzmm"), ncol = 5)
-#ggsave("fig/markers3_seu_spleen_filt_lymph.png", width = 20, height = 11)
+##ggsave("fig/markers3_seu_spleen_filt_lymph.png", width = 20, height = 11)
 
 
 ```
@@ -614,7 +614,7 @@ seu_pLN <- seu
 
 
 DimPlot(seu, group.by = "Immgen_annot_single_main", raster = T, pt.size = 4, raster.dpi = c(900,900)) + ggtheme()
-ggsave("./fig/pLN_annotations.svg", width = 16, height = 12, units = "cm")
+#ggsave("./fig/pLN_annotations.svg", width = 16, height = 12, units = "cm")
 
 seu_pLN$keep <- colnames(seu_pLN) %in% colnames(seu_pLN_filt)
 
@@ -624,7 +624,7 @@ seu_pLN_filt <- subset(seu_pLN, nFeature_RNA > 750 & percent.mt < 7.5 & Immgen_a
 
 DimPlot(seu_pLN, group.by = "keep", raster = T, pt.size = 3, , cols = c("red2","grey88"),
         raster.dpi = c(900,900)) + ggtheme()
-ggsave("./fig/pLN_qc.svg", width = 16, height = 12, units = "cm")
+#ggsave("./fig/pLN_qc.svg", width = 16, height = 12, units = "cm")
 
 ```
 
@@ -675,7 +675,7 @@ seu_pLN_filt <- NormalizeData(object = seu_pLN_filt)
 
 ```{r eval=FALSE, include=TRUE}
 markers_pln <- FindAllMarkers(seu_pLN_filt, logfc.threshold = log(2))
-write.csv(markers_pln, "markers_pln.csv", row.names = F)
+#write.csv(markers_pln, "markers_pln.csv", row.names = F)
 
 data.table(markers_pln %>% rank_score_func %>% filter(avg_log2FC > 0) %>% group_by(cluster) %>% slice_max(order_by = score, n = 20)) %>% 
   kbl() %>% 
@@ -692,7 +692,7 @@ pLN_cl0_vs_cl3 <- FindMarkers(seu_pLN_filt, ident.1 = 0, ident.2 = 3, only.pos =
 
 pLN_cl0_vs_cl3
 
-write.csv(pLN_cl0_vs_cl3, "pLN_cl0_vs_cl3.csv", row.names = T)
+#write.csv(pLN_cl0_vs_cl3, "pLN_cl0_vs_cl3.csv", row.names = T)
 
 data.table(pLN_cl0_vs_cl3) %>% 
   kbl() %>% 
@@ -815,7 +815,7 @@ df4 %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_text(angle = 90))
 
- #ggsave("fig/clusters_boxplots_pLN_filt_clusters.png", width = 18, height = 10, units = "cm")
+ ##ggsave("fig/clusters_boxplots_pLN_filt_clusters.png", width = 18, height = 10, units = "cm")
 ```
 
 ## Annotations
@@ -833,7 +833,7 @@ FeaturePlot(seu_pLN_filt, features = c("Ifng","Tbx21","Eomes","Bcl6","Ccr8",
 
 ```
 
-)
+
 # Merged spleen & pLN
 
 
@@ -895,7 +895,7 @@ DimPlot(funda_merge, label = T)
 mrk <- FindAllMarkers(funda_merge, logfc.threshold = log(1.5), min.diff.pct = 0.05)
 mrk <- rank_score_func(mrk) %>% arrange(cluster, desc(score))
 
-# write.csv(mrk, "funda_merge_clusters.csv")
+# #write.csv(mrk, "funda_merge_clusters.csv")
 
 # Top 20 positive markers for each cluster
 data.table(mrk %>% group_by(cluster) %>% filter(avg_log2FC > 0) %>% slice_max(order_by = score, n = 20)) %>% 
@@ -963,9 +963,9 @@ DimPlot(funda_merge, group.by = "seurat_clusters", label = T,
   "#D4A6C8",
   "slategray"),
   labels = levels(md$annotations_fine))
-ggsave(filename = "fig/dimPlot_19clusters.png", width = 20, height = 13, units = "cm")
+#ggsave(filename = "fig/dimPlot_19clusters.png", width = 20, height = 13, units = "cm")
 
-ggsave(filename = "fig/dimPlot_19clusters.svg", width = 20, height = 13, units = "cm")
+#ggsave(filename = "fig/dimPlot_19clusters.svg", width = 20, height = 13, units = "cm")
 
 
 
@@ -1030,8 +1030,8 @@ p <- ggtree::ggtree(tree, aes(x, y)) +
   theme(plot.margin = unit(c(0,2.5,0,0), 'cm'))
 
 p
-ggsave('plots/cluster_tree.png', p, height = 4, width = 4)
-ggsave('plots/cluster_tree.svg', p, height = 4, width = 4)
+#ggsave('plots/cluster_tree.png', p, height = 4, width = 4)
+#ggsave('plots/cluster_tree.svg', p, height = 4, width = 4)
 ```
 
 
@@ -1079,8 +1079,8 @@ DimPlot(funda_merge, group.by = "annotations_coarse", label = T,
   "#D4A6C8"))
 
 
-#ggsave(filename = "fig/dimPlot_10clusters.png", width = 20, height = 13, units = "cm")
-#ggsave(filename = "fig/dimPlot_10clusters.svg", width = 20, height = 13, units = "cm")
+##ggsave(filename = "fig/dimPlot_10clusters.png", width = 20, height = 13, units = "cm")
+##ggsave(filename = "fig/dimPlot_10clusters.svg", width = 20, height = 13, units = "cm")
 
 ```
 
@@ -1143,8 +1143,8 @@ df4 %>%
   xlab("Condition") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
 
- ggsave("fig/clusters_boxplots_SPL.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
-ggsave("fig/clusters_boxplots_SPL.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
+ #ggsave("fig/clusters_boxplots_SPL.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
+#ggsave("fig/clusters_boxplots_SPL.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
 
 ```
 
@@ -1197,8 +1197,8 @@ df4 %>%
   xlab("Condition") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
 
- ggsave("fig/clusters_boxplots_pLN.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
-ggsave("fig/clusters_boxplots_pLN.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
+ #ggsave("fig/clusters_boxplots_pLN.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
+#ggsave("fig/clusters_boxplots_pLN.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
 
 
 ```
@@ -1242,7 +1242,7 @@ df4 %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_text(angle = 90))
 
-# #ggsave("fig/clusters_boxplots.png", width = 25, height = 25, units = "cm")
+# ##ggsave("fig/clusters_boxplots.png", width = 25, height = 25, units = "cm")
 
 ```
 
@@ -1297,8 +1297,8 @@ df4 %>%
   xlab("Condition") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
 
- ggsave("fig/clusters_boxplots_SPL_coarse.png", width = 25, height = 16, units = "cm", limitsize = FALSE)
-ggsave("fig/clusters_boxplots_SPL_coarse.svg", width = 25, height = 16, units = "cm", limitsize = FALSE)
+ #ggsave("fig/clusters_boxplots_SPL_coarse.png", width = 25, height = 16, units = "cm", limitsize = FALSE)
+#ggsave("fig/clusters_boxplots_SPL_coarse.svg", width = 25, height = 16, units = "cm", limitsize = FALSE)
 ```
 
 
@@ -1352,12 +1352,12 @@ df4 %>%
   xlab("Condition") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
 
- ggsave("fig/clusters_boxplots_pLN_coarse.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
-ggsave("fig/clusters_boxplots_pLN_coarse.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
+ #ggsave("fig/clusters_boxplots_pLN_coarse.png", width = 25, height = 25, units = "cm", limitsize = FALSE)
+#ggsave("fig/clusters_boxplots_pLN_coarse.svg", width = 25, height = 25, units = "cm", limitsize = FALSE)
 
 ```
 
-# Annotations coarse 2 v06
+## Annotations coarse 2 v06
 
 ```{r}
 
@@ -1414,15 +1414,13 @@ DimPlot(funda_merge, group.by = "annotations_fine", label = T,
 
 
 
-ggsave(filename = "figv06/dimPlot_12clusters.png", width = 20, height = 13, units = "cm")
-ggsave(filename = "figv06/dimPlot_12clusters.svg", width = 20, height = 13, units = "cm")
+#ggsave(filename = "figv06/dimPlot_12clusters.png", width = 20, height = 13, units = "cm")
+#ggsave(filename = "figv06/dimPlot_12clusters.svg", width = 20, height = 13, units = "cm")
 
 ```
 
 
-# 12 clusters heatmap
-
-## Cluster markers
+## 12 clusters heatmap
 
 ```{r fig.width = 12, fig.height=4}
 markers  <- str_to_sentence(rev(c("TRAC","TRBC1","CD3D","CD4",
@@ -1485,7 +1483,7 @@ funda_merge@meta.data %>% group_by(MouseID, Tissue, study) %>% tally %>%
   geom_text(size = 5, position = position_stack(vjust = 0.5)) + theme_classic() + ggtheme() +
   scale_fill_manual(values = c(brewer.pal(n = 5, name = "Blues"),brewer.pal(n = 5, name = "Reds")))
 
-ggsave(filename = "./figv06/mouse_id_counts.svg", width = 32, height = 6, units = "cm")
+#ggsave(filename = "./figv06/mouse_id_counts.svg", width = 32, height = 6, units = "cm")
 
 ```
 
@@ -1498,8 +1496,8 @@ DimPlot(funda_merge,  group.by = "Tissue", cols = c("#5fd3bcff","#4a6ca3ff"), sh
 
 DimPlot(funda_merge,  group.by = "Tissue", cols = c("#5fd3bcff","#4a6ca3ff"), shuffle = T, 
         raster = T, pt.size = 10, raster.dpi = c(2500,2500)) 
-ggsave(filename = "fig/dimPlot_tissue.png", width = 16, height = 13, units = "cm")
-ggsave(filename = "fig/dimPlot_tissue.svg", width = 16, height = 13, units = "cm")
+#ggsave(filename = "fig/dimPlot_tissue.png", width = 16, height = 13, units = "cm")
+#ggsave(filename = "fig/dimPlot_tissue.svg", width = 16, height = 13, units = "cm")
 ```
 
 
@@ -1545,140 +1543,16 @@ df4 %>%
   xlab("Condition") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") 
 
- ggsave("figv06/clusters_boxplots_tissue.png", width = 25, height = 12, units = "cm", limitsize = FALSE)
-ggsave("figv06/clusters_boxplots_tissue.svg", width = 25, height = 12, units = "cm", limitsize = FALSE) 
+ #ggsave("figv06/clusters_boxplots_tissue.png", width = 25, height = 12, units = "cm", limitsize = FALSE)
+#ggsave("figv06/clusters_boxplots_tissue.svg", width = 25, height = 12, units = "cm", limitsize = FALSE) 
 
 ```
 
 
-# Clonal expansion
-## Clone abundance
-
-```{r}
-metadata_6 <- funda_merge@meta.data
-rownames(metadata_6) <- colnames(funda_merge)
-
-metadata_6 <- metadata_6 %>% mutate(
-  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
-  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
-)
-
-clone_table <- metadata_6 %>%
-  dplyr::group_by(factor(clone_aa)) %>%
-          dplyr::summarize(n = n(), sum = sum()) %>%
-    arrange(desc(n))
-
-clone_table
-```
-
-
-```{r}
-metadata_6$test <- 0
-metadata_6 <- metadata_6 %>% group_by(test, clone_aa) %>% mutate(clone_abundance = as.numeric(n()))
-
-
-metadata_6 <- as.data.frame(metadata_6 %>% mutate(clone_abundance = as.numeric(ifelse(clone_abundance==1056,NA_integer_,clone_abundance))) %>%
-  mutate(log_clone_abundance = log(clone_abundance, base = 2)))
-rownames(metadata_6) <- colnames(funda_merge)
-
-funda_merge@meta.data <- metadata_6
-rownames(funda_merge@meta.data) <- colnames(funda_merge)
-
-funda_merge <- AddMetaData(funda_merge, as.numeric(metadata_6$clone_abundance), "clone_abundance")
-rownames(funda_merge@meta.data) <- colnames(funda_merge)
-
-FeaturePlot(funda_merge, reduction = "umap", features = "log_clone_abundance")
-
-FeaturePlot(subset(funda_merge, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
-
-#ggsave("fig/Log2CloneAbundance.png", width = 13, height = 8, units = "cm", dpi = 120)
-#ggsave("fig/Log2CloneAbundance.svg", width = 13, height = 8, units = "cm", dpi = 120)
-
-# Clone abundance bar graph
-metadata_6 <- metadata_6 %>%
-  mutate( clone_abundance_group = case_when(clone_abundance==5 ~ "5",
-                                            clone_abundance==4 ~ "4",
-                                            clone_abundance==3 ~ "3",
-                                            clone_abundance==2 ~ "2",
-                                            clone_abundance==1 ~ "1",
-                                            TRUE ~ "0"
-                                            ),
-          clone_abundance_isNA = if_else(clone_abundance %in% c(1:5), "1", "0")) 
-
-metadata_6 %>% 
-  ggplot(aes(x = annotations_fine)) + 
-  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
-  coord_flip() +
-  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
-  ylab("") + 
-  theme_classic() + 
-  theme(plot.title = element_text(hjust = 0.5), 
-        legend.position="right", 
-        panel.border = element_blank(), 
-        legend.title = element_blank()) + 
-  ggtitle("Clone abundance in clusters")
-
-
-```
-
-
-```{r}
-## TCR detection
-
-metadata_6 %>% 
-  ggplot(aes(x = factor(annotations_fine, levels =  rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
-  geom_bar(aes(fill = factor(clone_abundance_isNA)), position = "fill") + 
-  coord_flip() +
-  scale_fill_manual(values = c("grey80", "#c6e9afff")) + xlab("Frequency")+
-  ylab("") + 
-  theme_classic() + 
-  theme(plot.title = element_text(hjust = 0.5), 
-        legend.position="right", 
-        panel.border = element_blank(), 
-        legend.title = element_blank()) + 
-  ggtitle("TCR detection in clusters")
-
-ggsave("figv06/TCR_Detection_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
-ggsave("figv06/TCR_Detection_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
-
-
-```
-
-
-
-```{r}
-
-metadata_6$clone_abundance_group
-### Clonal abundance
- metadata_6 %>% 
-  filter(clone_abundance_isNA == 1) %>% 
-  ggplot(aes(x = factor(annotations_fine, levels = rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
-  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
-   coord_flip() +
-  scale_fill_manual(values = c("#eff3ffff", "#bdd7e7ff", "#6baed6ff",
-                               "#ce7072ff", "#9c080dff")) + xlab("Frequency")+
-  xlab("Frequency") +
-  ylab("") + 
-  theme_classic() + 
-  theme(plot.title = element_text(hjust = 0.5), legend.position="right", panel.border = element_blank(), legend.title = element_blank()) + 
-  ggtitle("Clone abundance in clusters") + 
-  ggtheme()
-
- ggsave("figv06/Log2CloneAbundance_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
- ggsave("figv06/Log2CloneAbundance_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
-
-
-```
-
-```{r}
-
-DimPlot(funda_merge, cells.highlight = colnames(subset(funda_merge, cdr3_A1 == "CVVGDRGSALGRLHF")))
-ggsave(filename = "figv06/dimPlot_iNKT.png", width = 17.5, height = 13, units = "cm")
-ggsave(filename = "figv06/dimPlot_iNKT.svg", width = 17.5, height = 13, units = "cm")
-
-```
 
 ## Markers table
+
+### Markers of annotated populations
 
 ```{r}
 Idents(funda_merge) <- funda_merge$annotations_fine
@@ -1687,9 +1561,18 @@ mrk <- FindAllMarkers(funda_merge, only.pos = T)
 ```
 
 ```{r}
-mrk
-write.csv(mrk, "240805_markers.csv")
+data.table(mrk) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+
+#write.csv(mrk, "240805_markers.csv")
 ```
+
+### Markers of Seurat Clusters
 
 ```{r}
 DimPlot(funda_merge, group.by = "seurat_clusters")
@@ -1699,7 +1582,15 @@ Idents(funda_merge) <- funda_merge$seurat_clusters
 
 ```{r}
 mrk2 <- FindAllMarkers(funda_merge)
-write.csv(mrk2, "240615_markers2.csv")
+
+data.table(mrk2) %>% 
+  kbl() %>% 
+  kable_styling(font_size = 11,
+                bootstrap_options = c("striped", "hover", 
+                                      "condensed", "responsive")) %>% 
+  scroll_box(width = "100%", height = "400px")
+
+#write.csv(mrk2, "240615_markers2.csv")
 
 ```
 
@@ -1763,8 +1654,8 @@ theme(plot.title = element_text(hjust = 0.5),
   xlab("") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") 
 
- ggsave("figv06/clusters_boxplots_diet_pLN2.png", width = 48, height = 10, units = "cm", limitsize = FALSE)
-ggsave("figv06/clusters_boxplots_diet_pLN2.svg", width = 48, height = 10, units = "cm", limitsize = FALSE) 
+ #ggsave("figv06/clusters_boxplots_diet_pLN2.png", width = 48, height = 10, units = "cm", limitsize = FALSE)
+#ggsave("figv06/clusters_boxplots_diet_pLN2.svg", width = 48, height = 10, units = "cm", limitsize = FALSE) 
 
 library(ggpubr)
 df5 <- df4 %>% 
@@ -1777,7 +1668,7 @@ compare_means(freq ~ Diet, data = df5,
 compare_means(freq ~ Diet, data = df5, 
               group.by = "annotations_coarse")
 
-write.csv(df5, "pLN_freq.csv")
+#write.csv(df5, "pLN_freq.csv")
 ```
 
 ### Spleen
@@ -1811,8 +1702,8 @@ theme(plot.title = element_text(hjust = 0.5),
   xlab("") +
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") 
 
-ggsave("figv06/clusters_boxplots_diet_SPL2.png", width = 48, height = 10, units = "cm", limitsize = FALSE)
-ggsave("figv06/clusters_boxplots_diet_SPL2.svg", width = 48, height = 10, units = "cm", limitsize = FALSE) 
+#ggsave("figv06/clusters_boxplots_diet_SPL2.png", width = 48, height = 10, units = "cm", limitsize = FALSE)
+#ggsave("figv06/clusters_boxplots_diet_SPL2.svg", width = 48, height = 10, units = "cm", limitsize = FALSE) 
 
 
 library(ggpubr)
@@ -1826,7 +1717,7 @@ compare_means(freq ~ Diet, data = df5,
 compare_means(freq ~ Diet, data = df5, 
               group.by = "annotations_coarse")
 
-write.csv(df5, "SPL_freq.csv")
+#write.csv(df5, "SPL_freq.csv")
 
 ```
 
@@ -1866,7 +1757,7 @@ mrk_de_whole_data
 
 mrk_de_whole_data %>% filter(cluster == "Standard") %>% nrow
 
-write.csv(mrk_de_whole_data, "mrk_de_whole_data.csv")
+#write.csv(mrk_de_whole_data, "mrk_de_whole_data.csv")
 getwd()
 ```
 
@@ -1877,13 +1768,10 @@ funda_merge$Tissue %>% table
 mrk_de_pLN <- FindAllMarkers(subset(funda_merge, Tissue == "pLN"), only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
 mrk_de_spl <- FindAllMarkers(subset(funda_merge, Tissue == "Spleen"), only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
 
-mrk_de_pLN
-mrk_de_spl
-
 dir.create("tables")
-write.csv(mrk_de_whole_data, "tables/mrk_de_whole_data.csv")
-write.csv(mrk_de_pLN, "tables/mrk_de_pLN.csv")
-write.csv(mrk_de_spl, "tables/mrk_de_spl.csv")
+#write.csv(mrk_de_whole_data, "tables/mrk_de_whole_data.csv")
+#write.csv(mrk_de_pLN, "tables/mrk_de_pLN.csv")
+#write.csv(mrk_de_spl, "tables/mrk_de_spl.csv")
 
 ```
 
@@ -1899,7 +1787,7 @@ x_gfd <- list(
   pLN = mrk_de_pLN %>% dplyr::filter(cluster == "GFD") %>% pull(gene), 
   SPL = mrk_de_spl %>% dplyr::filter(cluster == "GFD") %>% pull(gene)) 
  ggVennDiagram(x_gfd)
-  ggsave("figs/venn_gfd.svg", width = 10, height = 6, units = "cm")
+  #ggsave("figs/venn_gfd.svg", width = 10, height = 6, units = "cm")
 
  
  v.table <- venn(x_gfd)
@@ -1911,7 +1799,7 @@ x_std <- list(
   pLN = mrk_de_pLN %>% dplyr::filter(cluster == "Standard") %>% pull(gene), 
   Spl = mrk_de_spl %>% dplyr::filter(cluster == "Standard") %>% pull(gene)) 
  ggVennDiagram(x_std)
- ggsave("figs/venn_std.svg", width = 10, height = 6, units = "cm")
+ #ggsave("figs/venn_std.svg", width = 10, height = 6, units = "cm")
  v.table <- venn(x_std)
 
     print(v.table)
@@ -1981,113 +1869,6 @@ dev.off()
 
 ## GSEA
 
-```{r}
-gsea_upGFD  <- all_markers2  %>% 
-                        dplyr::filter(!is.na(entrezid) & cluster == "GFD")  %>% 
-                        group_by(entrezid, avg_log2FC)  %>% 
-                        tally()  %>% 
-                        arrange(desc(n))  %>% 
-                        pull(entrezid)
-gsea_upGFD
-
-gsea_upSTD  <- all_markers2  %>% 
-                        dplyr::filter(!is.na(entrezid) & cluster == "Standard")  %>% 
-                        group_by(entrezid, avg_log2FC)  %>% 
-                        tally()  %>% 
-                        arrange(desc(n))  %>% 
-                        pull(entrezid)
-
-gsea_upSTD
-```
-
-
-```{r}
-library(msigdbr)
-
-immune_genes <- immune_genes <- msigdbr(species = "Mus musculus", category = "C7") %>% 
-  dplyr::select(gs_name, entrez_gene)
-head(immune_genes)
-
-
-which(all_markers2$entrezid %in% immune_genes)
-
-all_markers2$gene[which(all_markers2$entrezid %in% immune_genes$entrez_gene)]
-
-```
-
-
-
-```{r}
-geneList_nod <- all_markers2 %>% filter(!is.na(entrezid) & cluster == "GFD")
-write.csv(geneList_nod, "geneList_nod.csv")
-
-
-geneList_nod <- all_markers2 %>% filter(!is.na(entrezid) & cluster == "Standard")
-write.csv(geneList_nod, "geneList_nod_std.csv")
-
-
-geneList_nod_vector <- geneList_nod$avg_log2FC
-names(geneList_nod_vector) <- geneList_nod$entrezid
-
-geneList_nod_vector <- geneList_nod_vector[rev(order(geneList_nod_vector))]
-geneList_nod_vector
-
-
-edo2 <- gseDO(geneList_nod_vector)
-
-p1 <- gseaplot(edo2, geneSetID = 1, by = "runningScore", title = edo2$Description[1])
-
-
-em2 <- GSEA(geneList_nod_vector, TERM2GENE = immune_genes)
-em %>% as.data.frame()
-
-
-mutate(em, qscore = -log(p.adjust, base=10)) %>% 
-    barplot(x="qscore")
-
-dotplot(em, showCategory=20) + ggtitle("dotplot for ORA")
-```
-
-```{r}
-em <- enricher(gsea_upSTD, TERM2GENE=immune_genes)
-head(em)
-em %>% as.data.frame()
-
-gsea_upSTD
-
-dotplot(em, showCategory=20) + ggtitle("dotplot for ORA")
-```
-
-
-```{r}
-
-all_markers2
-gsea_upSTD  <- all_markers2  %>% 
-                        dplyr::filter(!is.na(entrezid) & cluster == "Standard")  %>% 
-                        group_by(entrezid, avg_log2FC)  %>% 
-                        tally()  %>% 
-                        arrange(desc(n))  %>% 
-                        pull(entrezid)
-gsea_upSTD
-
-
-ego2 <- enrichGO(gene          = gsea_upSTD,
-                OrgDb         = org.Mm.eg.db,
-                ont           = "ALL",
-                pAdjustMethod = "BH",
-                pvalueCutoff  = 0.01,
-                qvalueCutoff  = 0.05,
-        readable      = TRUE)
-
-
-head(ego2)
-
-ego2 %>% as.data.frame
-```
-
-
-## GSEA traditional
-
 Get fold changes using marker testing with unlimited thresholds.
 
 ```{r}
@@ -2109,8 +1890,6 @@ fct_generate_pathway <- function(i){
 }
 
 pathways <- map(.x = 1:length(c7.pathways.names), .f = fct_generate_pathway)
-
-pathways
 
 pathways2 <- list()
 
@@ -2137,8 +1916,6 @@ fc.entrezids <- AnnotationDbi::select(org.Mm.eg.db,
 
 fc.diet.gfd$entrezid <- fc.entrezids$ENTREZID
 
-fc.diet.gfd
-
 
 fc.input <- as.numeric(fc.diet.gfd$avg_logFC)
 names(fc.input) <- fc.diet.gfd$gene
@@ -2162,11 +1939,11 @@ fgseaRes.gfd.signif %>%
   scale_color_gradient(low = "red2", high = "lightblue") + 
   theme_classic() +
   theme(axis.ticks.y = element_blank()) + ggtheme()
-ggsave(filename = "figs/pathway_plot_big.png", width = 35, height = 28, units = "cm")
-ggsave(filename = "figs/pathway_plot_big.svg", width = 35, height = 28, units = "cm")
+#ggsave(filename = "figs/pathway_plot_big.png", width = 35, height = 28, units = "cm")
+#ggsave(filename = "figs/pathway_plot_big.svg", width = 35, height = 28, units = "cm")
 
 
-ggsave(filename = "figs/pathway_plot_small.png", width = 35, height = 10, units = "cm")
+#ggsave(filename = "figs/pathway_plot_small.png", width = 35, height = 10, units = "cm")
 
 
 
@@ -2200,11 +1977,213 @@ p3 <- plotEnrichment(pathways2$GOLDRATH_NAIVE_VS_EFF_CD8_TCELL_DN, fc.input) + y
 p3
 
 cowplot::plot_grid(p1, p2, p3, ncol = 1)
-ggsave(filename = "figs/gsea.svg", width = 10, height = 20, units = "cm")
+#ggsave(filename = "figs/gsea.svg", width = 10, height = 20, units = "cm")
+
+```
+
+# IREA
+
+```{r}
+## Read IREA table outputs
+irea <- list.files("IREA", full.names = T)
+
+
+for(i in 1:10){
+  ire_sample <- read_csv(irea[i])
+  ire_sample$i <- irea[i]
+  if(i == 1){
+      irea_all <- ire_sample
+    } else {
+      irea_all <- rbind(irea_all, ire_sample)
+      }
+}
+
+irea_all$...1 <- NULL
+
+irea_all$i <- sub(irea_all$i, pattern = "IREA/df_irea_", replacement = "")
+irea_all$i <- sub(irea_all$i, pattern = ".csv", replacement = "")
+  
+irea_all <-  irea_all %>% separate(i, into = c("Diet", "Cluster"), sep = "_")
+
+irea_all
+```
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
+ stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_shape_manual(values = c(17,19,15))+
+ scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme()
+
+##ggsave(filename = "figs/irea_gfd.svg", width = 19, height = 10, units = "cm")
+##ggsave(filename = "figs/irea_gfd.png", width = 19, height = 10, units = "cm")
 
 ```
 
 
+No filtration pval
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
+ # filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
+ stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_shape_manual(values = c(17,19,15))+
+ scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme()
+
+##ggsave(filename = "figs/irea_gfd.svg", width = 19, height = 10, units = "cm")
+#ggsave(filename = "figs/irea_gfd_no_filtration.png", width = 60, height = 15, units = "cm")
+
+
+```
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median'), y = `Enrichment Score`, fill=..y..)) + 
+ stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_shape_manual(values = c(17,19,15))+
+ scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme() + coord_flip()
+
+##ggsave(filename = "figs/irea_gfd2.svg", width = 19, height = 22, units = "cm")
+##ggsave(filename = "figs/irea_gfd2.png", width = 19, height = 22, units = "cm")
+
+```
+
+
+```{r}
+irea_all %>% 
+   filter(Diet == "std" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
+ #geom_bar(position='dodge', stat='summary', fun='mean', alpha = 0.7, width = 0.9, aes(fill = color_enrich$enrich)) +
+  stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_size_continuous(range = c(1,4))+
+  scale_shape_manual(values = c(17,19,15))+
+   scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme()
+
+#ggsave(filename = "figs/irea_std.svg", width = 21, height = 10, units = "cm")
+#ggsave(filename = "figs/irea_std.png", width = 21, height = 10, units = "cm")
+
+
+```
+
+```{r}
+irea_all %>% 
+   filter(Diet == "std" & Cluster %in% c("cd4","cd8","treg")) %>% 
+  filter(padj < 0.05) %>% 
+ ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median'), y = `Enrichment Score`, fill=..y..)) + 
+ #geom_bar(position='dodge', stat='summary', fun='mean', alpha = 0.7, width = 0.9, aes(fill = color_enrich$enrich)) +
+  stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
+      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
+  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
+  scale_size_continuous(range = c(1,4))+
+  scale_shape_manual(values = c(17,19,15))+
+   scale_fill_gradient2(
+    low = "dodgerblue3",
+  mid = "grey88",
+  high = "indianred2",
+  limits = c(-750,2250))+xlab("")+
+ theme(axis.text.x = element_text(angle = 90, color = "black"),
+       axis.ticks.x = element_blank()
+       ) + ggtheme() + coord_flip()
+
+#ggsave(filename = "figs/irea_std2.svg", width = 19, height = 24, units = "cm")
+#ggsave(filename = "figs/irea_std2.png", width = 19, height = 24, units = "cm")
+
+
+```
+
+
+# FC STD GF
+```{r}
+Idents(funda_merge) <- funda_merge$Diet
+funda_merge$Diet %>% table
+
+fc <- FoldChange(funda_merge, ident.1 = "GFD", ident.2 = "Standard")
+
+fc %>% arrange(avg_log2FC)
+
+```
+
+
+```{r}
+genes_hansen_up <- c('Cd247','Zbtb32','Galnt16','Slc7a6','Mboat1','Chst2','Cep55','Dennd2d','Nebl','Gfi1',
+'AI838599','Adamts6','Podnl1','Itih5','Cxcl13','Ms4a4b','Zbp1','Gimap8','Cd28','Bcl11b','Thy1','Tnfsf13b',
+'Bcl2','BC018473','Cd69','H2-Oa','Parm1','Tmtc1','Ms4a6b','Rgs16','Lipc','Atp8b4','Socs1','Ikzf2','Clu',
+'Lyz2','Spns3','Gbp4','Stc2','Trat1','Mpzl3','Tox','Cst7','AC154378.1','Sit1','Cacnb3','Upp1',
+'Lurap1l','Cd5','Themis','B4galt6','Gpr176','Il5ra','Il12rb1','Mcoln3','Pdcd1','Olfr1372-ps1',
+'Tnf','Havcr1','Gbp6','Cd96','Colq','Trbv13-2','Nudt17','Cd8a','Dnaaf3','Gm44103','2010016I18Rik',
+'Nlrc5','Ctla4','S1pr3','Gm2682','Eno2','Kcng1','Tmem154','Cd27','Tnn','Il17rb',
+'Slfn1','Il2ra','Cish','Plekhf1','Dkk2','Mreg','Pla2g2d','Ggt1','Phf24','Mcemp1','Asprv1','Slc36a2','Trac',
+'Tgtp1','Bcat1','Adam11','Gm39321','Trbv16','Pappa','5830411N06Rik','Rap1gap','Lamc2','Gm38244','Bst1',
+'9330175E14Rik','Gm12407','9530052E02Rik','Ccr4','Nyx','Irak1bp1','Serpina3i','Stmn2','Smpd5','Chdh','Kcne4',
+'Izumo1r','Gm11707','Ccl19-ps3','Tnfsf11','Scel','Slc12a5','Art2a-ps','Gm15056','Il7','A430088P11Rik',
+'Madcam1','Msc','CT571247.2','Tnfsf8','Gm37975','Gm5134','Cilp','Tnfrsf9','Tmem45a','Ccdc30','Sspo',
+'B630019A10Rik','Iglc4','Il13ra2','Cacna1b','Serpina3n','Drc1','Ccl21c','Cxcl9','Dntt','Il33','Erp27','Slco5a1',
+'Lyz1','Art2b','Flrt3','Unc5c','2610528A11Rik','Pigr','Vmn2r96','Cdcp1','Gm10851','Cdhr1','Osbpl10','Pla2g4f',
+'Fxyd2','Slc7a11','Gm12185','Rab26','Ryr3','Spock3','Kcnf1','Gxylt2','Ccl19','Gm48878','Gm16685','Slc10a6',
+'A730020M07Rik','Col28a1','Gm13546','Gm47792','Dsc2','H2-M2','Nrg1','Grem1','Tmem150c','Thbs4','Mpped1','Trbv29','Dsc3',
+'Serpina10','Slc6a7','Nrn1','Sostdc1','Fat3','2610035D17Rik','Gm10591','Aire','Gm33858','Gpnmb','Tarm1','Fbxo40',
+'B430119L08Rik','Gbp10','Ccr8','Itgb8','Galnt6os','Car12','Tmprss11d','Hc','Insm1','Ighv12-3')
+```
+
+```{r}
+
+
+fc.df  <- fc  %>%  arrange(desc(avg_log2FC)) %>% 
+  rownames_to_column("gene") %>% 
+  dplyr::select(gene, avg_log2FC)
+ranks<- deframe(fc.df)
+
+library(fgsea)
+
+plotEnrichment(genes_hansen_up,
+               ranks) + labs(title="Hansen up in Ctrl") + ylim(-0.7,0.7) + ggtheme() 
+```
 
 # Correaltion with FACS
 
@@ -2244,12 +2223,12 @@ md_to_join <- seurat_meta_data %>%
 
 df4  <- left_join(df4, md_to_join)
 
-df4
+
 ```
 
 
 ```{r}
-df4
+
 df5  <- df4 %>% 
 ungroup   %>% 
   mutate(Tissue_ID_Diet = paste(Tissue_ID, Diet, sep = ".")) %>% 
@@ -2260,7 +2239,7 @@ pivot_wider(names_from = "Tissue_ID_Diet", values_from = "freq", values_fill = 0
 df6  <- df5 %>% pivot_longer(!annotations_facs, names_to = "Tissue_ID_Diet", values_to = "freq") %>% 
   separate(Tissue_ID_Diet, into = c("Tissue","MouseID","Diet"), sep = "\\.", remove = F)
 
-df6
+
 ```
 
 
@@ -2285,7 +2264,7 @@ df6 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-ggsave("figs/spl_scRNAseq.svg", width = 36, height = 9.5, units = "cm")
+#ggsave("figs/spl_scRNAseq.svg", width = 36, height = 9.5, units = "cm")
 
 df6 %>% 
   dplyr::filter(Tissue == "pLN") %>% 
@@ -2307,16 +2286,12 @@ df6 %>%
   ggtheme()
 
 
-ggsave("figs/pln_scRNAseq.svg", width = 36, height = 9.5, units = "cm")
+#ggsave("figs/pln_scRNAseq.svg", width = 36, height = 9.5, units = "cm")
 
 
 DimPlot(funda_merge, group.by = "annotations_facs", cols = c("#006bd6ff","#41a90eff","#6ff86fff",
                                                              "#be66beff","#a83e09ff","#ffa448ff"),
         pt.size = 1) 
-```
-
-```{r}
-df4
 ```
 
 Load facs percentages
@@ -2397,7 +2372,7 @@ high_dim2 %>% dplyr::select(1,2,13,14:19) %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())  + ggtitle("pLN FACS") + ggtheme()
   
-ggsave("figs/pln_facs.svg", width = 36, height = 9.5, units = "cm")
+#ggsave("figs/pln_facs.svg", width = 36, height = 9.5, units = "cm")
 
 
 high_dim2 %>% dplyr::select(1,2,13,14:19) %>% 
@@ -2419,12 +2394,12 @@ high_dim2 %>% dplyr::select(1,2,13,14:19) %>%
     theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())  + ggtitle("Spleen FACS") + ggtheme()
 
-ggsave("figs/spl_facs.svg", width = 36, height = 9.5, units = "cm")
+#ggsave("figs/spl_facs.svg", width = 36, height = 9.5, units = "cm")
 
 ```
 
 ```{r}
-high_dim2
+
 dir.create("./results_240618_tissue/")
 for(i in c(14:19)){
   
@@ -2459,7 +2434,7 @@ plot <- df_filt %>%
     title = paste(stringr::str_replace_all(string = colnames(high_dim2)[i], pattern = "/", replacement = "\n")) ,
     theme = theme(plot.title = element_text(size = 8), plot.subtitle = element_text(size = 8)))
 print(plot)
-  ggsave(paste0("./results_240618_tissue/",paste0("plot_",i),".svg"), width = 10, height = 9, units = "cm")
+  #ggsave(paste0("./results_240618_tissue/",paste0("plot_",i),".svg"), width = 10, height = 9, units = "cm")
 }
 
 getwd()
@@ -2468,8 +2443,6 @@ getwd()
 ## Correlation
 
 ```{r}
-df4
-
 high_dim3 <- high_dim2 %>% mutate(Tissue_ID = paste0(tissue, ".Mouse_",sample)) %>% dplyr::select(14:20)
 high_dim3
 corr_df <- df4 %>% 
@@ -2489,10 +2462,10 @@ corr_df2 <- corr_df %>% pivot_longer(!Tissue_ID, names_to = "population", values
   separate(Tissue_ID, into = c("Tissue","MouseID"), sep = "\\.", remove = F) %>% 
   separate(population, into = c("Method","Population"), sep = " ", remove = T) %>% 
   pivot_wider(names_from = Method, values_from = freq)
-  
-corr_df2
+```
 
 
+```{r}
 library(ggpubr)
 options(repr.plot.width = 5, repr.plot.height = 5)
   corr_df2 %>%  ggplot(aes(x=FACS, y=scRNAseq)) +
@@ -2502,7 +2475,7 @@ options(repr.plot.width = 5, repr.plot.height = 5)
     scale_color_manual(values = c("#006bd6ff","#41a90eff","#6ff86fff",
                                                              "#be66beff","#a83e09ff","#ffa448ff")) + 
     ggtheme() + NoLegend()
-    ggsave("figs/correlation.svg", width = 7, height = 7, units = "cm")
+    #ggsave("figs/correlation.svg", width = 7, height = 7, units = "cm")
 
  
   
@@ -2523,8 +2496,6 @@ options(repr.plot.width = 5, repr.plot.height = 5)
 
 
 ```{r}
-high_dim2
-
 for(i in c(14:19)){
   
   df_filt <- high_dim2 %>% 
@@ -2552,7 +2523,7 @@ plot <- df_filt %>%
     title = paste(stringr::str_replace_all(string = colnames(high_dim2)[i], pattern = "/", replacement = "\n")) ,
     theme = theme(plot.title = element_text(size = 8), plot.subtitle = element_text(size = 8)))
 print(plot)
-  #ggsave(paste0("./results_240129/",paste0("plot_",i),".png"), width = 32, height = 12, units = "cm")
+  ##ggsave(paste0("./results_240129/",paste0("plot_",i),".png"), width = 32, height = 12, units = "cm")
 }
 
 getwd()
@@ -2600,8 +2571,6 @@ hm <- read_xlsx("../../../220614 NOD gluten free diet scRNAseq/HighDim/cluster_h
 
 hm_map <- hm %>% column_to_rownames("Cluster") %>% as.matrix()
 
-hm_map
-
 library(pheatmap)
 
 pheatmap(hm_map[,c(10,3,5,6,11,1,2,7,8,9,4)], main = "", 
@@ -2617,255 +2586,6 @@ pheatmap(hm_map[c(1,5,3,4,2),c(10,3,5,6,11,1,2,7,8,9,4)], main = "",
          border_color = "white",
                   fontsize = 12, width = 4, height = 3,
         filename = "heatmap_cluster_FACS.pdf")
-```
-
-
-
-
-
-# IREA
-
-```{r}
-## Read IREA table outputs
-irea <- list.files("IREA", full.names = T)
-
-
-for(i in 1:10){
-  ire_sample <- read_csv(irea[i])
-  ire_sample$i <- irea[i]
-  if(i == 1){
-      irea_all <- ire_sample
-    } else {
-      irea_all <- rbind(irea_all, ire_sample)
-      }
-}
-
-irea_all$...1 <- NULL
-
-irea_all$i <- sub(irea_all$i, pattern = "IREA/df_irea_", replacement = "")
-irea_all$i <- sub(irea_all$i, pattern = ".csv", replacement = "")
-  
-irea_all <-  irea_all %>% separate(i, into = c("Diet", "Cluster"), sep = "_")
-
-irea_all
-```
-
-
-```{r}
-irea_all %>% 
-   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
-  filter(padj < 0.05) %>% 
- ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
- stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
-      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
-  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
-  scale_shape_manual(values = c(17,19,15))+
- scale_fill_gradient2(
-    low = "dodgerblue3",
-  mid = "grey88",
-  high = "indianred2",
-  limits = c(-750,2250))+xlab("")+
- theme(axis.text.x = element_text(angle = 90, color = "black"),
-       axis.ticks.x = element_blank()
-       ) + ggtheme()
-
-#ggsave(filename = "figs/irea_gfd.svg", width = 19, height = 10, units = "cm")
-#ggsave(filename = "figs/irea_gfd.png", width = 19, height = 10, units = "cm")
-
-```
-
-
-No filtration pval
-
-
-```{r}
-irea_all %>% 
-   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
- # filter(padj < 0.05) %>% 
- ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
- stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
-      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
-  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
-  scale_shape_manual(values = c(17,19,15))+
- scale_fill_gradient2(
-    low = "dodgerblue3",
-  mid = "grey88",
-  high = "indianred2",
-  limits = c(-750,2250))+xlab("")+
- theme(axis.text.x = element_text(angle = 90, color = "black"),
-       axis.ticks.x = element_blank()
-       ) + ggtheme()
-
-#ggsave(filename = "figs/irea_gfd.svg", width = 19, height = 10, units = "cm")
-ggsave(filename = "figs/irea_gfd_no_filtration.png", width = 60, height = 15, units = "cm")
-
-
-```
-
-
-```{r}
-irea_all %>% 
-   filter(Diet == "gf" & Cluster %in% c("cd4","cd8","treg")) %>% 
-  filter(padj < 0.05) %>% 
- ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median'), y = `Enrichment Score`, fill=..y..)) + 
- stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
-      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
-  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
-  scale_shape_manual(values = c(17,19,15))+
- scale_fill_gradient2(
-    low = "dodgerblue3",
-  mid = "grey88",
-  high = "indianred2",
-  limits = c(-750,2250))+xlab("")+
- theme(axis.text.x = element_text(angle = 90, color = "black"),
-       axis.ticks.x = element_blank()
-       ) + ggtheme() + coord_flip()
-
-#ggsave(filename = "figs/irea_gfd2.svg", width = 19, height = 22, units = "cm")
-#ggsave(filename = "figs/irea_gfd2.png", width = 19, height = 22, units = "cm")
-
-```
-
-
-```{r}
-irea_all %>% 
-   filter(Diet == "std" & Cluster %in% c("cd4","cd8","treg")) %>% 
-  filter(padj < 0.05) %>% 
- ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median', .desc = TRUE), y = `Enrichment Score`, fill=..y..)) + 
- #geom_bar(position='dodge', stat='summary', fun='mean', alpha = 0.7, width = 0.9, aes(fill = color_enrich$enrich)) +
-  stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
-      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
-  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
-  scale_size_continuous(range = c(1,4))+
-  scale_shape_manual(values = c(17,19,15))+
-   scale_fill_gradient2(
-    low = "dodgerblue3",
-  mid = "grey88",
-  high = "indianred2",
-  limits = c(-750,2250))+xlab("")+
- theme(axis.text.x = element_text(angle = 90, color = "black"),
-       axis.ticks.x = element_blank()
-       ) + ggtheme()
-
-ggsave(filename = "figs/irea_std.svg", width = 21, height = 10, units = "cm")
-ggsave(filename = "figs/irea_std.png", width = 21, height = 10, units = "cm")
-
-
-```
-
-```{r}
-irea_all %>% 
-   filter(Diet == "std" & Cluster %in% c("cd4","cd8","treg")) %>% 
-  filter(padj < 0.05) %>% 
- ggplot(aes(x = fct_reorder(Cytokine, `Enrichment Score`, .fun='median'), y = `Enrichment Score`, fill=..y..)) + 
- #geom_bar(position='dodge', stat='summary', fun='mean', alpha = 0.7, width = 0.9, aes(fill = color_enrich$enrich)) +
-  stat_summary(fun=mean, geom="bar", position = position_dodge(0.9)) +
-      theme_bw()  + scale_size_continuous(range=c(1,4), limits = c(0,20)) +
-  geom_point(aes(size = -log(padj, base = 10), shape = Cluster)) + 
-  scale_size_continuous(range = c(1,4))+
-  scale_shape_manual(values = c(17,19,15))+
-   scale_fill_gradient2(
-    low = "dodgerblue3",
-  mid = "grey88",
-  high = "indianred2",
-  limits = c(-750,2250))+xlab("")+
- theme(axis.text.x = element_text(angle = 90, color = "black"),
-       axis.ticks.x = element_blank()
-       ) + ggtheme() + coord_flip()
-
-ggsave(filename = "figs/irea_std2.svg", width = 19, height = 24, units = "cm")
-ggsave(filename = "figs/irea_std2.png", width = 19, height = 24, units = "cm")
-
-
-```
-
-
-# FC STD GF
-```{r}
-Idents(funda_merge) <- funda_merge$Diet
-funda_merge$Diet %>% table
-
-fc <- FoldChange(funda_merge, ident.1 = "GFD", ident.2 = "Standard")
-
-fc %>% arrange(avg_log2FC)
-
-```
-
-
-```{r}
-genes_hansen_up <- c('Cd247','Zbtb32','Galnt16','Slc7a6','Mboat1','Chst2','Cep55','Dennd2d','Nebl','Gfi1',
-'AI838599','Adamts6','Podnl1','Itih5','Cxcl13','Ms4a4b','Zbp1','Gimap8','Cd28','Bcl11b','Thy1','Tnfsf13b',
-'Bcl2','BC018473','Cd69','H2-Oa','Parm1','Tmtc1','Ms4a6b','Rgs16','Lipc','Atp8b4','Socs1','Ikzf2','Clu',
-'Lyz2','Spns3','Gbp4','Stc2','Trat1','Mpzl3','Tox','Cst7','AC154378.1','Sit1','Cacnb3','Upp1',
-'Lurap1l','Cd5','Themis','B4galt6','Gpr176','Il5ra','Il12rb1','Mcoln3','Pdcd1','Olfr1372-ps1',
-'Tnf','Havcr1','Gbp6','Cd96','Colq','Trbv13-2','Nudt17','Cd8a','Dnaaf3','Gm44103','2010016I18Rik',
-'Nlrc5','Ctla4','S1pr3','Gm2682','Eno2','Kcng1','Tmem154','Cd27','Tnn','Il17rb',
-'Slfn1','Il2ra','Cish','Plekhf1','Dkk2','Mreg','Pla2g2d','Ggt1','Phf24','Mcemp1','Asprv1','Slc36a2','Trac',
-'Tgtp1','Bcat1','Adam11','Gm39321','Trbv16','Pappa','5830411N06Rik','Rap1gap','Lamc2','Gm38244','Bst1',
-'9330175E14Rik','Gm12407','9530052E02Rik','Ccr4','Nyx','Irak1bp1','Serpina3i','Stmn2','Smpd5','Chdh','Kcne4',
-'Izumo1r','Gm11707','Ccl19-ps3','Tnfsf11','Scel','Slc12a5','Art2a-ps','Gm15056','Il7','A430088P11Rik',
-'Madcam1','Msc','CT571247.2','Tnfsf8','Gm37975','Gm5134','Cilp','Tnfrsf9','Tmem45a','Ccdc30','Sspo',
-'B630019A10Rik','Iglc4','Il13ra2','Cacna1b','Serpina3n','Drc1','Ccl21c','Cxcl9','Dntt','Il33','Erp27','Slco5a1',
-'Lyz1','Art2b','Flrt3','Unc5c','2610528A11Rik','Pigr','Vmn2r96','Cdcp1','Gm10851','Cdhr1','Osbpl10','Pla2g4f',
-'Fxyd2','Slc7a11','Gm12185','Rab26','Ryr3','Spock3','Kcnf1','Gxylt2','Ccl19','Gm48878','Gm16685','Slc10a6',
-'A730020M07Rik','Col28a1','Gm13546','Gm47792','Dsc2','H2-M2','Nrg1','Grem1','Tmem150c','Thbs4','Mpped1','Trbv29','Dsc3',
-'Serpina10','Slc6a7','Nrn1','Sostdc1','Fat3','2610035D17Rik','Gm10591','Aire','Gm33858','Gpnmb','Tarm1','Fbxo40',
-'B430119L08Rik','Gbp10','Ccr8','Itgb8','Galnt6os','Car12','Tmprss11d','Hc','Insm1','Ighv12-3')
-```
-
-```{r}
-
-
-fc.df  <- fc  %>%  arrange(desc(avg_log2FC)) %>% 
-  rownames_to_column("gene") %>% 
-  dplyr::select(gene, avg_log2FC)
-ranks<- deframe(fc.df)
-
-library(fgsea)
-
-plotEnrichment(genes_hansen_up,
-               ranks) + labs(title="Hansen up in Ctrl") + ylim(-0.7,0.7) + ggtheme() 
-```
-
-
-# Treg DE genes
-
-```{r}
-
-treg <- subset(funda_merge, annotations_coarse == "CD4 Treg")
-
-DimPlot(treg)
-
-mrk_de_treg <- FindAllMarkers(treg, only.pos = TRUE)
-mrk_de_treg
-
-
-avgexp = AverageExpression(treg, features = mrk_de_treg$gene,
-                           return.seurat = F, group.by = "MouseID", 
-                          assay = "RNA")
-
-avgexp$RNA
-
-options(repr.plot.width = 9.5, repr.plot.height = 2.5)
-pheatmap(t(avgexp$RNA), main = "", 
-         scale = "column", cluster_cols = F, cluster_rows = F,
-        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
-         border_color = "white",
-                  fontsize = 12)
-
-
-avgexp = AverageExpression(treg, features = c("Itgae","Klrg1","Tcf7","Foxp3","Tigit","Ctla4","Mki67"),
-                           return.seurat = F, group.by = "MouseID", 
-                          assay = "RNA")
-
-avgexp$RNA
-
-options(repr.plot.width = 9.5, repr.plot.height = 2.5)
-pheatmap(t(avgexp$RNA), main = "", 
-         scale = "column", cluster_cols = F, cluster_rows = F,
-        color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
-         border_color = "white",
-                  fontsize = 12)
 ```
 
 
@@ -2909,8 +2629,8 @@ FeaturePlot(funda_merge, reduction = "umap", features = "log_clone_abundance")
 
 FeaturePlot(subset(funda_merge, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
 
-#ggsave("fig/Log2CloneAbundance.png", width = 13, height = 8, units = "cm", dpi = 120)
-#ggsave("fig/Log2CloneAbundance.svg", width = 13, height = 8, units = "cm", dpi = 120)
+##ggsave("fig/Log2CloneAbundance.png", width = 13, height = 8, units = "cm", dpi = 120)
+##ggsave("fig/Log2CloneAbundance.svg", width = 13, height = 8, units = "cm", dpi = 120)
 
 # Clone abundance bar graph
 metadata_6 <- metadata_6 %>%
@@ -2936,8 +2656,7 @@ metadata_6 %>%
         legend.title = element_blank()) + 
   ggtitle("Clone abundance in clusters")
 
-library(RColorBrewer)
-brewer.pal(n, name)
+
 ```
 
 
@@ -2945,28 +2664,36 @@ brewer.pal(n, name)
 ## TCR detection
 
 metadata_6 %>% 
-  ggplot(aes(x = factor(annotations_coarse, levels = rev(levels(factor(metadata_6$annotations_coarse)))))) + 
+  ggplot(aes(x = factor(annotations_fine, levels =  rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
   geom_bar(aes(fill = factor(clone_abundance_isNA)), position = "fill") + 
   coord_flip() +
-  scale_fill_manual(values = c("grey80", "palegreen3")) + xlab("Frequency")+
+  scale_fill_manual(values = c("grey80", "#c6e9afff")) + xlab("Frequency")+
   ylab("") + 
   theme_classic() + 
   theme(plot.title = element_text(hjust = 0.5), 
         legend.position="right", 
         panel.border = element_blank(), 
         legend.title = element_blank()) + 
-  ggtitle("Clone abundance in clusters")
+  ggtitle("TCR detection in clusters")
+
+#ggsave("figv06/TCR_Detection_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
+#ggsave("figv06/TCR_Detection_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
+
 ```
 
 
+
 ```{r}
-### Clonal abundance, axis up to 30%
+
+### Clonal abundance
  metadata_6 %>% 
   filter(clone_abundance_isNA == 1) %>% 
-  ggplot(aes(x = annotations_coarse)) + 
+  ggplot(aes(x = factor(annotations_fine, levels = rev(levels(factor(metadata_6$annotations_fine))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
   geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
    coord_flip() +
-  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
+  scale_fill_manual(values = c("#eff3ffff", "#bdd7e7ff", "#6baed6ff",
+                               "#ce7072ff", "#9c080dff")) + xlab("Frequency")+
   xlab("Frequency") +
   ylab("") + 
   theme_classic() + 
@@ -2974,331 +2701,20 @@ metadata_6 %>%
   ggtitle("Clone abundance in clusters") + 
   ggtheme()
 
-# ggsave("fig/Log2CloneAbundance_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
-# ggsave("fig/Log2CloneAbundance_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+ #ggsave("figv06/Log2CloneAbundance_bar.png", width = 18, height = 10, units = "cm", dpi = 120)
+ #ggsave("figv06/Log2CloneAbundance_bar.svg", width = 18, height = 10, units = "cm", dpi = 120)
+
 
 ```
 
 ```{r}
 
-### Clonal abundance, axis up to 30%
- metadata_6 %>% 
-    ggplot(aes(x = factor(annotations_coarse, levels = rev(levels(factor(annotations_coarse))[c(1,6,8,3,2,7,12,9,4,11,5,10)])))) + 
-  geom_bar(aes(fill = factor(clone_abundance_group)), position = "fill") + 
-   coord_flip() +
-  scale_fill_brewer(palette = "Blues") + xlab("Frequency")+
-  xlab("Frequency") +
-  ylab("") + 
-  theme_classic() + 
-  theme(plot.title = element_text(hjust = 0.5), legend.position="right", panel.border = element_blank(), legend.title = element_blank()) + 
-  ggtitle("Clone abundance in clusters") + 
-  ggtheme()
-
- ggsave("figv06/Log2CloneAbundance_bar_v06.png", width = 18, height = 10, units = "cm", dpi = 120)
- ggsave("figv06/Log2CloneAbundance_bar_v06.svg", width = 18, height = 10, units = "cm", dpi = 120)
+DimPlot(funda_merge, cells.highlight = colnames(subset(funda_merge, cdr3_A1 == "CVVGDRGSALGRLHF")))
+#ggsave(filename = "figv06/dimPlot_iNKT.png", width = 17.5, height = 13, units = "cm")
+#ggsave(filename = "figv06/dimPlot_iNKT.svg", width = 17.5, height = 13, units = "cm")
 
 ```
 
-
-```{r fig.width=30, fig.height=20}
-plot_list <- list()
-
-for(i in 2:16){
- 
-plot_list[[i]] <-  DimPlot(funda_merge, 
-        cells.highlight = colnames(funda_merge)[which(funda_merge$clone_aa == pull(clone_table, `factor(clone_aa)`)[i])],
-        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = pull(clone_table, `factor(clone_aa)`)[i], pattern = "CDR3a", replacement = "\nCDR3a"))
-  }
-
-cowplot::plot_grid(plotlist = plot_list[2:16], ncol = 5)
-#ggsave("fig/tcr_funda.png", width = 35, height = 60, units = "cm")
-
-```
-
-## Clone abundance = boxplot 
-```{r}
-
-df4 <-metadata_6 %>% mutate(clon_expanded = if_else(clone_abundance_group == 1 ,"Unique clone","2+ clones")) %>% group_by(MouseID, clon_expanded) %>% 
-  summarise(n = n()) %>%
-  mutate(freq = n / sum(n)) 
-
-df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
-
-    df4 %>%
-      mutate(Diet = if_else(grepl(MouseID, pattern = "1|2|3|4|5"), "GFD", "STD")) %>% 
-      filter(!is.na(clon_expanded)) %>% 
-     ggplot(aes(x = Diet, y = freq*100)) + 
- geom_boxplot(outlier.shape = NA) +
- geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-      geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
-      scale_color_manual(values= c("firebrick","lightskyblue3")) + 
-      theme_minimal() + 
-      facet_wrap(~clon_expanded, scales = "free", ncol = 2)  + ylim(c(0,NA))
-    
-  
-```
-
-
-## Clone abundance = boxplot2
-```{r, fig.width=12, fig.height=8}
-
-df4 <-metadata_6 %>% mutate(clon_expanded = if_else(clone_abundance_group == 1 ,"Unique clone","2+ clones")) %>% mutate(MouseID_cluster = paste(MouseID, seurat_clusters, sep = "-")) %>% group_by(MouseID_cluster, clon_expanded) %>% 
-  summarise(n = n()) %>%
-  mutate(freq = n / sum(n)) 
-
-df4
-
-df4 %>% group_by(MouseID_cluster) %>% summarise(sum = sum(freq))
-
-    df4 %>%
-      mutate(Diet = if_else(grepl(MouseID_cluster, pattern = "_1|_2|_3|_4|_5"), "GFD", "STD")) %>% 
-      separate(MouseID_cluster, into = c("MouseID", "seurat_clusters"), sep = "-") %>% 
-       filter(!is.na(clon_expanded)) %>% 
-           filter(clon_expanded == "2+ clones") %>% 
-     ggplot(aes(x = Diet, y = freq*100)) + 
- geom_boxplot(outlier.shape = NA) +
- geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-      geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
-      scale_color_manual(values= c("firebrick","lightskyblue3")) + 
-      theme_minimal() + 
-      facet_wrap(~factor(seurat_clusters, levels = c(0:9,11,17)), scales = "free", ncol = 7)  + ylim(c(0,NA))
-    
-  
-```
-
-
-
-Clones in tissues
-
-```{r}
-
-## top 10 clones tissues 
-
-top_10_clones <- pull(clone_table, `factor(clone_aa)`)[2:11]
-
-top_10_clones %>% 
-  kbl() %>% 
-  kable_styling(font_size = 11,
-                bootstrap_options = c("striped", "hover", 
-                                      "condensed", "responsive")) %>% 
-  scroll_box(width = "100%", height = "400px")
-
-metadata_7 <- metadata_6 %>% filter(clone_aa %in% top_10_clones) %>% group_by(clone_aa, Tissue) %>% tally %>% pivot_wider(names_from = "Tissue", values_from = n, values_fill = 0) %>% arrange(desc(Spleen))
-
-```
-
-
-# Reclustering unconventional and proliferating cells
-
-## Subsetting
-
-```{r}
-DimPlot(funda_merge, label = T)
-
-unconv_prolif <- subset(funda_merge, seurat_clusters %in% c(7,9,10,16,17))
-
- unconv_prolif <- NormalizeData(object = unconv_prolif)
-  unconv_prolif <- ScaleData(unconv_prolif, verbose = FALSE)
-  unconv_prolif <- FindVariableFeatures(unconv_prolif, selection.method = "vst", nfeatures = 1000, 
-                                       verbose = FALSE)
-  unconv_prolif <- RunPCA(unconv_prolif, npcs = 10, verbose = FALSE)
-  unconv_prolif <- RunUMAP(unconv_prolif, reduction = "pca", dims = 1:10)
-  unconv_prolif <- FindNeighbors(unconv_prolif, dims = 1:10)
-  unconv_prolif <- FindClusters(unconv_prolif, resolution = 0.9)
-  DimPlot(unconv_prolif, label = T)
-  
-
-  DimPlot(unconv_prolif, group.by = "Tissue") 
-  DimPlot(unconv_prolif, group.by = "Diet") 
-  
-
-FeaturePlot(unconv_prolif, features = c("Cd4", "Cd8a", "Mki67", "Ncr1"))
-FeaturePlot(unconv_prolif, features = c("Foxp3", "Il2ra", "Trdc", "Trgv2"))
-FeaturePlot(unconv_prolif, features = c("Gata3", "Tbx21", "Ifng", "Bcl6"))
-FeaturePlot(unconv_prolif, features = c("Ikzf2", "Klrk1", "Klrd1", "Il7r"))
-
-```
-
-```{r fig.width=18, fig.height=10}
-
-unconv_prolif <- reduced_annot(unconv_prolif, "Immgen_annot_single", n_cells_to_other = 20)
-
-unconv_prolif$Immgen_annot_single_red %>% table
-
-DimPlot(unconv_prolif, group.by = "Immgen_annot_single_red", label = T, repel = T) 
- 
-#ggsave("fig/unconventional_dimplot.png", width = 35, height = 25, units = "cm")
-```
-
-## Unconventional proliferating annotations
-
-```{r fig.width=7, fig.height=4}
-  DimPlot(unconv_prolif, label = T)
-
-md <- unconv_prolif@meta.data
-
-md <- md %>% mutate(annotations_fine = recode(seurat_clusters, 
-                                                     "0" = "00 NK cells 1",
-                                                     "1" = "01 CD4 naive",
-                                                     "2" = "02 Treg 1",
-                                                     "3" = "03 Tgd 1",
-                                                     "4" = "04 Proliferating",
-                                                     "5" = "05 NKT / Th1",
-                                                     "6" = "06 Treg 2",
-                                                     "7" = "07 CD8 naive",
-                                                     "8" = "08 NK and Tgd 3",
-                                                     "9" = "09 Tgd 2",
-                                                     "10" = "10 NK cells 2",
-                                                     "11" = "11 NKT / Th17"))
-
-unconv_prolif@meta.data <- md
-DimPlot(unconv_prolif, group.by = "annotations_fine")
-```
-
-## Markers
-
-```{r eval=TRUE, include=TRUE}
-markers_prolif <- FindAllMarkers(unconv_prolif, min.diff.pct = 0.05, logfc.threshold = log(1.5))
-
-markers_prolif <- rank_score_func(markers_prolif)
-markers_prolif %>% filter(avg_log2FC >0) %>% group_by(cluster) %>% slice_max(order_by = score, n = 20) %>% 
-  kbl() %>% 
-  kable_styling(font_size = 11,
-                bootstrap_options = c("striped", "hover", 
-                                      "condensed", "responsive")) %>% 
-  scroll_box(width = "100%", height = "400px")
-
-
-```
-
-```{r fig.width=30, fig.height=23}
-FeaturePlot(unconv_prolif, features = c("Ncr1","Gzma","Fcer1g","Prf1","Klre1",
-                                        "Cd4", "Cd40lg","S1pr1","Ccr7", "Il6ra",
-                                        "Foxp3","Il1rl1","Ctla4","Tigit","Icos",
-                                        "Trgv2","Trdc","Ccr9","Itgae","Tmem108",
-                                        "Cxcr6","Il4","Zbtb16","Xcl1","Fasl",
-                                        "Cd200","Izumo1r","Tnfsf11","Tnfsf8","Pdcd1"),
-            ncol = 5)
-#ggsave("fig/unconv_markers1.png", width = 30, height = 20)
-
-FeaturePlot(unconv_prolif, features = c("Gzmk","Ccr10","Cx3cr1","S100a4","Lgals3",
-                                        "Kcnj8", "Gzmm","Ncr1","Cd7", "Xcl1",
-                                        "Hck","Prdm16","Tcrg-V7","Cxxc5","Klri1",
-                                        "Tnni1","Klrb1a","Scimp","Klrb1f","Klrb1f",
-                                        "Blk","Lingo4","Il17re","Rorc","Il23r"),
-            ncol = 5)
-#ggsave("fig/unconv_markers2.png", width = 30, height = 20)
-
-```
-
-Good vs bad NK cells
-
-```{r}
-
-nk_cell_diff <- FindMarkers(unconv_prolif, ident.1 = 0, ident.2 = 10)
-#nk_cell_diff
-
-```
-
-
-Boxplots
-
-```{r}
-seurat_meta_data <- unconv_prolif@meta.data
-
-# Create grouped dataframe, calculate the frequencies of clusters
-df4 <- seurat_meta_data %>% 
-  group_by(MouseID, annotations_fine) %>% 
-  summarise(n = n()) %>% 
-  unique() %>% 
-  mutate(freq = n / sum(n)) 
-
-# Control - all sums should be one
-# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
-
-# As we've lost non-grouping variables, let's join them back
-md_to_join <- seurat_meta_data %>% 
-  dplyr::select(MouseID, Diet, annotations_fine) %>% 
-  unique()
-
-df4  <- left_join(df4, md_to_join)
-
-# The final plot
-
-df4 %>% 
-  ggplot(aes(x = Diet, y = freq)) + # you can change the x to whatever variable you're interested in
-  geom_boxplot(outlier.shape = NA) + 
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-  geom_jitter(position=position_jitter(0.2), size = 2, aes(color = Diet)) + 
-  facet_wrap(~annotations_fine, scales = "free", ncol = 5) +
-  ylab("Frequency") +
-  xlab("Condition") +
-  theme_classic() +
-  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
-  theme(axis.text.x = element_text(angle = 90))
-
-
-# #ggsave("fig/clusters_boxplots_unconventional.png", width = 20, height = 15, units = "cm")
-
-```
-
-
-## Unconventional clones 
-
-```{r}
-FeaturePlot(unconv_prolif, reduction = "umap", features = "log_clone_abundance")
-
-FeaturePlot(subset(unconv_prolif, clone_abundance >=1 & clone_abundance < 1056), reduction = "umap", features = "log_clone_abundance", cols = c("lightblue","firebrick")) + theme_classic() + theme(plot.title = element_text(hjust = 0.5)) + ggtitle("Log2 clone abundance")
-
-```
-
-
-```{r fig.width=20, fig.height=35}
-metadata_6 <- unconv_prolif@meta.data
-rownames(metadata_6) <- colnames(unconv_prolif)
-
-metadata_6 <- metadata_6 %>% mutate(
-  clone_nt = paste(cdr3_B_nt,cdr3_A1_nt,cdr3_A2_nt),
-  clone_aa = paste("CDR3b",cdr3_B,"CDR3a",cdr3_A1)
-)
-
-clone_table_prolif <- metadata_6 %>%
-  dplyr::group_by(factor(clone_aa)) %>%
-          dplyr::summarize(n = n(), sum = sum()) %>%
-    arrange(desc(n))
-
-clone_table_prolif %>% 
-  kbl() %>% 
-  kable_styling(font_size = 11,
-                bootstrap_options = c("striped", "hover", 
-                                      "condensed", "responsive")) %>% 
-  scroll_box(width = "100%", height = "400px")
-```
-
-
-```{r fig.width=20, fig.height=35}
-plot_list <- list()
-
-for(i in 2:15){
- 
-plot_list[[i]] <-  DimPlot(unconv_prolif, split.by = "Diet",
-        cells.highlight = colnames(unconv_prolif)[which(unconv_prolif$clone_aa == pull(clone_table_prolif, `factor(clone_aa)`)[i])],
-        sizes.highlight = 2) + NoLegend() + ggtitle(str_replace(string = pull(clone_table_prolif, `factor(clone_aa)`)[i], pattern = "CDR3a", replacement = "\nCDR3a"))
-}
-
-cowplot::plot_grid(plotlist = plot_list[2:15], ncol = 2)
-```
-
-# Show Egr and early activated
-
-```{r fig.height = 4, fig.width = 5}
-funda_merge$c14 <- funda_merge$seurat_clusters %in% c(14)
-DimPlot(funda_merge, group.by = "c14", cols = c("grey78","#b532b2ff"))
-
-funda_merge$c18 <- funda_merge$seurat_clusters %in% c(18)
-DimPlot(funda_merge, group.by = "c18", cols = c("grey78","#b532b2ff"))
-
-```
 
 
 # Treg reclustering
@@ -3341,7 +2757,8 @@ tregs_tfh$annotations_fine %>% table
 
 ```
 
-# Fig plot
+
+## Treg Fig Dimplot
 
 ```{r fig.height = 4, fig.width = 5}
 funda_merge$treg <- funda_merge$seurat_clusters %in% c(7,8,11)
@@ -3350,7 +2767,7 @@ DimPlot(funda_merge, group.by = "treg", cols = c("grey78","#fd7a00ff"))
 DimPlot(tregs_tfh, cols = c("#e3e34dff", "#5a9fdeff","#d5a43fff",
                             "#6faea9ff","#d2723dff","#c94eb8ff"), pt.size = 6, raster = T,
         raster.dpi = c(900,900)) + ggtheme()
-#ggsave("fig/treg_dimplot.svg", width = 8, height = 5.5, units = "cm")
+##ggsave("fig/treg_dimplot.svg", width = 8, height = 5.5, units = "cm")
 
 
 
@@ -3381,8 +2798,8 @@ markers_tregs %>% filter(avg_log2FC >0) %>% group_by(cluster) %>% slice_max(orde
 table(Idents(tregs_tfh))
 markers_tregs <- FindAllMarkers(tregs_tfh, only.pos = T)
 
-markers_tregs
-write.csv(markers_tregs, "240806_markers_treg.csv")
+
+#write.csv(markers_tregs, "240806_markers_treg.csv")
 ```
 
 
@@ -3410,12 +2827,6 @@ pheatmap(t(avgexp$RNA), main = "",
          border_color = "white",
                   fontsize = 12)
 
-
-# pheatmap(t(avgexp$RNA[,c(1,6,3,2,7,8,4,10,5,9)]), main = "", 
-#          scale = "column", cluster_cols = F, cluster_rows = F,
-#         color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50), 
-#          border_color = "white",
-#                   fontsize = 12)
 
 
 markers_order  <- rev(c("Ctla4","Il2ra","Foxp3","Ikzf2","Sell","Ccr7","Satb1","Lef1","Tcf7",
@@ -3527,7 +2938,7 @@ df4 %>%
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_text(angle = 90))
 
- #ggsave("fig/clusters_boxplots_tregs.png", width = 20, height = 5, units = "cm")
+ ##ggsave("fig/clusters_boxplots_tregs.png", width = 20, height = 5, units = "cm")
 
 ```
 
@@ -3572,7 +2983,7 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-#ggsave("figs/treg_quant.svg", width = 32, height = 9, units = "cm")
+##ggsave("figs/treg_quant.svg", width = 32, height = 9, units = "cm")
 ```
 
 
@@ -3618,7 +3029,7 @@ df4 %>%
   ylab("Frequency") +
   xlab("Condition") 
 
-  #ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
+  ##ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3663,7 +3074,7 @@ df4 %>%
   ylab("Frequency") +
   xlab("Condition") 
 
-  #ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
+  ##ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3780,7 +3191,7 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") + 
   ggtheme()
 
-  ggsave("figv06/treg_quant_diet_pLN_ttest.png", width = 32, height = 9, units = "cm")
+  #ggsave("figv06/treg_quant_diet_pLN_ttest.png", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3805,9 +3216,9 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") + 
   ggtheme()
 
- # ggsave("figv06/treg_quant_diet_SPL_ttest.svg", width = 32, height = 9, units = "cm")
+ # #ggsave("figv06/treg_quant_diet_SPL_ttest.svg", width = 32, height = 9, units = "cm")
 
-ggsave("figv06/treg_quant_diet_SPL_ttest.png", width = 32, height = 9, units = "cm")
+#ggsave("figv06/treg_quant_diet_SPL_ttest.png", width = 32, height = 9, units = "cm")
 ```
 
 
@@ -3905,7 +3316,7 @@ high_dim2 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-#ggsave("figs/spl_facs_treg.svg", width = 36, height = 9.5, units = "cm")
+##ggsave("figs/spl_facs_treg.svg", width = 36, height = 9.5, units = "cm")
 ```
 
 
@@ -3929,7 +3340,7 @@ high_dim2 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-ggsave("figs/pln_facs_treg.svg", width = 36, height = 9.5, units = "cm")
+#ggsave("figs/pln_facs_treg.svg", width = 36, height = 9.5, units = "cm")
 ```
 
 ```{r}
@@ -3951,7 +3362,7 @@ high_dim2 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-ggsave("figs/facs_treg_tissue.svg", width = 38, height = 9.5, units = "cm")
+#ggsave("figs/facs_treg_tissue.svg", width = 38, height = 9.5, units = "cm")
 ```
 
 ## Treg clones 
@@ -4035,12 +3446,12 @@ FeaturePlot(funda_merge, features = c("Trac", "Tgfb1"))
 ```{r }
 FeaturePlot(tgd, features = c("Trdc"), pt.size = 12, raster = T,
         raster.dpi = c(1300,1000)) + ggtheme()
-ggsave("figv06/tgd_Trdc.svg", width = 13, height = 10, units = "cm")
+#ggsave("figv06/tgd_Trdc.svg", width = 13, height = 10, units = "cm")
 
 DimPlot(tgd, cells.highlight = colnames(subset(tgd, cdr3_A1 == "CVVGDRGSALGRLHF")), pt.size = 12, raster = T,
         raster.dpi = c(1200,900)) + ggtheme() + NoLegend()
-ggsave("figv06/tgd_iNKT.svg", width = 12, height = 9, units = "cm")
-ggsave("figv06/tgd_iNKT.png", width = 12, height = 9, units = "cm")
+#ggsave("figv06/tgd_iNKT.svg", width = 12, height = 9, units = "cm")
+#ggsave("figv06/tgd_iNKT.png", width = 12, height = 9, units = "cm")
 ```
 
 
@@ -4060,7 +3471,7 @@ mrk <- FindAllMarkers(tgd, only.pos = T)
 markers_tgd <- FindAllMarkers(tgd, only.pos = T)
 
 markers_tgd
-write.csv(markers_tgd, "240806_markers_tgd.csv")
+#write.csv(markers_tgd, "240806_markers_tgd.csv")
 ```
 
 
@@ -4085,7 +3496,7 @@ DimPlot(tgd, cols = c(
   "#9D7660" ,
   "#B07AA1"), pt.size = 12, raster = T,
         raster.dpi = c(900,900)) + ggtheme()
-ggsave("fig/tgd_dimplot.svg", width = 8, height = 5.5, units = "cm")
+#ggsave("fig/tgd_dimplot.svg", width = 8, height = 5.5, units = "cm")
 
 ```
 
@@ -4152,9 +3563,6 @@ pheatmap(t(avgexp$RNA)[c(1,4,5,2,3),], main = "",
 ```
 
 
-
-
-
 ```{r}
 
 seurat_meta_data <- tgd@meta.data
@@ -4200,7 +3608,7 @@ df4 %>%
                              method = "t.test", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  ggsave("figs/tgd_diet_spleen_ttest.png", width = 25, height = 9, units = "cm")
+  #ggsave("figs/tgd_diet_spleen_ttest.png", width = 25, height = 9, units = "cm")
 
 df4 %>% 
   dplyr::filter(Tissue == "pLN") %>% 
@@ -4222,10 +3630,10 @@ df4 %>%
                              size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  ggsave("figs/tgd_diet_pLN_ttest.png", width = 22, height = 9, units = "cm")
+  #ggsave("figs/tgd_diet_pLN_ttest.png", width = 22, height = 9, units = "cm")
 
   
-  write.csv(df4, "pLN_mw.csv")
+  #write.csv(df4, "pLN_mw.csv")
 ```
 
 
@@ -4290,7 +3698,7 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  #ggsave("figs/tgd_diet_spleen.svg", width = 25, height = 9, units = "cm")
+  ##ggsave("figs/tgd_diet_spleen.svg", width = 25, height = 9, units = "cm")
 
 df4 %>% 
   dplyr::filter(Tissue == "pLN") %>% 
@@ -4311,7 +3719,7 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  #ggsave("figs/tgd_diet_pLN.svg", width = 22, height = 9, units = "cm")
+  ##ggsave("figs/tgd_diet_pLN.svg", width = 22, height = 9, units = "cm")
 
 ```
 
@@ -4323,7 +3731,7 @@ deg_nkt <- FindMarkers(tgd, ident.1 = 1, ident.2 = 2)
 
 deg_nkt
 
-write.csv(deg_nkt, "../2022-10-17_Funda_NOD/tables/deg_nkt.csv")
+#write.csv(deg_nkt, "../2022-10-17_Funda_NOD/tables/deg_nkt.csv")
 
 
 FeaturePlot(tgd, features = c("Rorc","Xcl1","Ccl5"))
@@ -4371,7 +3779,7 @@ df4 %>%
   ylab("Frequency") +
   xlab("Condition") 
 
-  ggsave("figs/tgd_quant_tissue.svg", width = 25, height = 9, units = "cm")
+  #ggsave("figs/tgd_quant_tissue.svg", width = 25, height = 9, units = "cm")
 
 ```
 

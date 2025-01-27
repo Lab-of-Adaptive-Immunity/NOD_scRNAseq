@@ -31,6 +31,8 @@ vignettes/*.pdf
 # knitr and R markdown default cache directories
 *_cache/
 /cache/
+01_Analysis_scRNAseq_cache/
+01_Analysis_scRNAseq_files/
 
 # Temporary files created by R markdown
 *.utf8.md
@@ -51,3 +53,7 @@ rsconnect/
 # Data files
 data/
 *.rds
+*.csv
+*.png
+*.svg
+*.pdf
