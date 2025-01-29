@@ -1765,7 +1765,9 @@ Spleen vs pLN
 
 ```{r}
 funda_merge$Tissue %>% table
+
 mrk_de_pLN <- FindAllMarkers(subset(funda_merge, Tissue == "pLN"), only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+
 mrk_de_spl <- FindAllMarkers(subset(funda_merge, Tissue == "Spleen"), only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
 
 dir.create("tables")
@@ -2173,7 +2175,6 @@ genes_hansen_up <- c('Cd247','Zbtb32','Galnt16','Slc7a6','Mboat1','Chst2','Cep55
 
 ```{r}
 
-
 fc.df  <- fc  %>%  arrange(desc(avg_log2FC)) %>% 
   rownames_to_column("gene") %>% 
   dplyr::select(gene, avg_log2FC)
@@ -2184,6 +2185,105 @@ library(fgsea)
 plotEnrichment(genes_hansen_up,
                ranks) + labs(title="Hansen up in Ctrl") + ylim(-0.7,0.7) + ggtheme() 
 ```
+
+# DEG in clusters
+
+```{r}
+funda_merge$annotations_coarse %>% table
+```
+```{r}
+funda_merge@meta.data <- funda_merge@meta.data %>% 
+  mutate(annotations_super_coarse = case_when(
+    annotations_coarse %in% c( "CD4 Naive","CD4 Egr Myb", "CD4 Early act. 41BB CD69") ~ "CD4",
+    annotations_coarse %in% c( "CD8 Naive","CD8 ISAGhi", "CD8 AIMT", "CD8 Egr") ~ "CD8",
+    annotations_coarse %in% c( "CD4 Treg and Tfh") ~ "Treg",
+    annotations_coarse %in% c( "Proliferating") ~ "Proliferating",
+    annotations_coarse %in% c( "ILC", "Tgd and NKT ") ~ "Tgd NKT ILC",
+    annotations_coarse %in% c( "NK cells") ~ "NK cells"
+    
+  ))
+
+DimPlot(funda_merge, group.by = "annotations_super_coarse")
+```
+
+
+```{r}
+clusters <- levels(factor(funda_merge$annotations_super_coarse))
+
+for(i in 1:6){
+  funda_ds <- subset(funda_merge, annotations_super_coarse == clusters[i])
+  Idents(funda_merge) <- funda_merge$Diet
+mrk_de <- FindAllMarkers(funda_ds, only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+mrk_de$population <- clusters[i]
+if(i == 1){
+  mrk_all <- mrk_de
+} else {
+  mrk_all <- rbind(mrk_all, mrk_de)
+}
+}
+
+```
+
+```{r}
+mrk_all %>% dplyr::filter(population == "CD4")
+mrk_all %>% dplyr::filter(population == "CD8")
+mrk_all %>% dplyr::filter(population == "Treg")
+mrk_all %>% dplyr::filter(population == "Proliferating")
+mrk_all %>% dplyr::filter(population == "Tgd NKT ILC")
+mrk_all %>% dplyr::filter(population == "NK cells")
+
+```
+
+
+DESeq
+
+```{r}
+
+
+for(i in 1:6){
+  funda_ds <- subset(funda_merge, annotations_super_coarse == clusters[i])
+  Idents(funda_ds) <- funda_ds$MouseID
+funda_bulk <- AggregateExpression(funda_ds, group.by = c("MouseID", "Diet"), 
+                                return.seurat = T, assays = "RNA")
+
+funda_bulk$Diet <- substr(colnames(funda_bulk),9,10)
+Idents(funda_bulk) <- funda_bulk$Diet
+Idents(funda_bulk)
+
+  mrk_de <- FindAllMarkers(funda_bulk, 
+                        min.pct = 0,
+                        min.diff.pct = 0, 
+                        min.cells.feature = 0,
+                        min.cells.group = 0,
+                        logfc.threshold = 0,
+                        only.pos = T,
+                        return.thresh = 0.005,
+                        #ident.1 = "GF", ident.2 = "St", 
+                        test.use = "t")
+mrk_de
+mrk_de$population <- clusters[i]
+
+if(i == 1){
+  mrk_all_bulk <- mrk_de
+} else {
+  mrk_all_bulk <- rbind(mrk_all_bulk, mrk_de)
+}
+}
+
+
+mrk_all_bulk %>% dplyr::filter(population == "CD8")
+
+```
+
+
+```{r}
+Idents(funda_merge) <- funda_merge$Diet
+
+mrk_de_whole_data <- FindAllMarkers(funda_merge, only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
+mrk_de_whole_data
+```
+
+
 
 # Correaltion with FACS
 
@@ -3439,6 +3539,12 @@ FeaturePlot(tgd, features = c("Trac", "Tgfb1"))
 
 FeaturePlot(funda_merge, features = c("Trac", "Tgfb1"))
 
+
+```
+```{r}
+FeaturePlot(tgd, features = c("Itga4"), pt.size = 2)
+FeaturePlot(tgd, features = c("Klrk1"), pt.size = 2)
+FeaturePlot(tgd, features = c("Cd44"), pt.size = 2)
 
 ```
 
