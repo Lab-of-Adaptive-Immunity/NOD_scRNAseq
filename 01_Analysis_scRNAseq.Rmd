@@ -2235,6 +2235,8 @@ mrk_all %>% dplyr::filter(population == "NK cells")
 ```
 
 
+
+
 DESeq
 
 ```{r}
@@ -2270,17 +2272,27 @@ if(i == 1){
 }
 }
 
+mrk_all
 
-mrk_all_bulk %>% dplyr::filter(population == "CD8")
+mrk_all %>% 
+  dplyr::filter(cluster == "GFD") %>% 
+  group_by(gene) %>% tally %>% arrange(desc(n))
 
 ```
 
 
-```{r}
-Idents(funda_merge) <- funda_merge$Diet
 
-mrk_de_whole_data <- FindAllMarkers(funda_merge, only.pos = TRUE, logfc.threshold = 0.1, min.pct = 0.05)
-mrk_de_whole_data
+
+### GO in clusters
+
+```{r}
+m_df<- msigdbr(species = "Mus musculus", category = "C7")
+fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
+paths_fc  <- list.files("../tables/fold_change", full.names = T)
+dataset_names  <- list.files("../tables/fold_change", full.names = F)
+
+
+
 ```
 
 
