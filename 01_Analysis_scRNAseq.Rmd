@@ -3020,7 +3020,7 @@ seurat_meta_data$MouseID2 <- str_replace_all(string = seurat_meta_data$MouseID,
                                             replacement = "")
 # Create grouped dataframe, calculate the frequencies of clusters
 df4 <- seurat_meta_data %>% 
-  group_by(MouseID, seurat_clusters) %>% 
+  group_by(MouseID2, seurat_clusters) %>% 
   summarise(n = n()) %>% 
   unique() %>% 
   mutate(freq = n / sum(n)) 
@@ -3054,52 +3054,6 @@ df4 %>%
  ##ggsave("fig/clusters_boxplots_tregs.png", width = 20, height = 5, units = "cm")
 
 ```
-
-```{r}
-
-seurat_meta_data <- tregs_tfh@meta.data
-seurat_meta_data$MouseID2 <- str_replace_all(string = seurat_meta_data$MouseID, 
-                                            pattern = "Mouse_", 
-                                            replacement = "")
-# Create grouped dataframe, calculate the frequencies of clusters
-df4 <- seurat_meta_data %>% 
-  group_by(MouseID, annotations_fine) %>% 
-  summarise(n = n()) %>% 
-  unique() %>% 
-  mutate(freq = n / sum(n)) 
-
-# Control - all sums should be one
-# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
-
-# As we've lost non-grouping variables, let's join them back
-md_to_join <- seurat_meta_data %>% 
-  dplyr::select(MouseID, Diet, annotations_fine, MouseID2) %>% 
-  unique()
-
-df4  <- left_join(df4, md_to_join)
-
-df4 %>% 
-  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
-  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
-  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-  geom_jitter(width = 0.1, height = 0.1, shape = 21,
-              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
-  facet_wrap(~annotations_fine, scales = "free", ncol = 6) +
-  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
-  scale_color_manual(values = c("dodgerblue","indianred2")) + 
-  ylab("Frequency") +
-  xlab("Condition") +
-  theme_classic() +
-  ylim(0,NA)+
-  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Spleen scRNAseq") +
-  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
-  ggtheme()
-
-##ggsave("figs/treg_quant.svg", width = 32, height = 9, units = "cm")
-```
-
-
 
 ### Quantification tissue
 
@@ -3142,7 +3096,7 @@ df4 %>%
   ylab("Frequency") +
   xlab("Condition") 
 
-  ##ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
+  ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3187,7 +3141,7 @@ df4 %>%
   ylab("Frequency") +
   xlab("Condition") 
 
-  ##ggsave("figs/treg_quant_tissue.svg", width = 32, height = 9, units = "cm")
+ggsave("figs/treg_quant_spl.svg", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3210,6 +3164,8 @@ df4 %>%
   ylim(0,NA) +
   ylab("Frequency") +
   xlab("Condition") 
+
+ggsave("figs/treg_quant_pLN.svg", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3291,7 +3247,7 @@ df4 %>%
   ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
   geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
   geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+  geom_jitter(width = 0.05, height = 0, shape = 21,
               size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
   facet_wrap(~factor(annot_treg, levels = levels(factor(df4$annot_treg))[c(1,3,5,4,2,6)]),
              scales = "free", ncol = 6) +
@@ -3303,10 +3259,11 @@ df4 %>%
   ylim(0,NA)+
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN scRNAseq") +
-  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") + 
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  #ggsave("figv06/treg_quant_diet_pLN_ttest.png", width = 32, height = 9, units = "cm")
+ggsave("figv06/treg_quant_diet_pLN_wilcox.png", width = 32, height = 9, units = "cm")
+ggsave("figv06/treg_quant_diet_pLN_wilcox.svg", width = 32, height = 9, units = "cm")
 
 ```
 
@@ -3317,7 +3274,7 @@ df4 %>%
   ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
   geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
   geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+  geom_jitter(width = 0.05, height = 0, shape = 21,
               size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
   facet_wrap(~factor(annot_treg, levels = levels(factor(df4$annot_treg))[c(1,3,5,4,2,6)]),
              scales = "free", ncol = 6) +
@@ -3329,14 +3286,146 @@ df4 %>%
   ylim(0,NA)+
   theme(strip.background = element_blank(), panel.grid = element_blank()) + 
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("SPL scRNAseq") +
-  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format", method = "t.test") + 
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
- # #ggsave("figv06/treg_quant_diet_SPL_ttest.svg", width = 32, height = 9, units = "cm")
+ ggsave("figv06/treg_quant_diet_SPL_wilcox.svg", width = 32, height = 9, units = "cm")
 
-#ggsave("figv06/treg_quant_diet_SPL_ttest.png", width = 32, height = 9, units = "cm")
+ggsave("figv06/treg_quant_diet_SPL_wilcox.png", width = 32, height = 9, units = "cm")
 ```
 
+
+## Quantification in full dataset
+
+```{r}
+tregs_tfh$seurat_clusters %>% table
+DimPlot(tregs_tfh)
+
+tregs_tfh$annot_treg <- paste("Treg cl.",tregs_tfh$seurat_clusters)
+tregs_tfh$barcode <- colnames(tregs_tfh)
+```
+
+```{r}
+funda_merge$annotations_coarse %>% table
+cd4 <- subset(funda_merge, annotations_coarse %in% c("CD4 Naive",
+                                                     "CD4 Treg and Tfh",
+                                                     "CD4 Egr Myb",
+                                                     "CD4 Early act. 41BB CD69"))
+
+cd4$annotations_coarse %>% table
+
+cd4$barcode <- colnames(cd4)
+cd4@meta.data <- left_join(cd4@meta.data, dplyr::select(tregs_tfh@meta.data, barcode, annot_treg))
+
+rownames(cd4@meta.data) <- colnames(cd4)
+```
+
+```{r}
+DimPlot(tregs_tfh, label = T, label.size = 9)
+DimPlot(cd4, group.by = "annot_treg")
+```
+
+```{r fig.width = 12, fig.height = 4.5}
+seurat_meta_data <- cd4@meta.data
+seurat_meta_data$MouseID2 <- paste(str_replace_all(string = seurat_meta_data$MouseID, 
+                                            pattern = "Mouse_", 
+                                            replacement = ""),seurat_meta_data$Tissue)
+
+
+# Create grouped dataframe, calculate the frequencies of clusters
+df4 <- seurat_meta_data %>% 
+  group_by(MouseID2, annot_treg) %>% 
+  summarise(n = n()) %>% 
+  unique() %>% 
+  mutate(freq = n / sum(n)) 
+
+# Control - all sums should be one
+# df4 %>% group_by(MouseID) %>% summarise(sum = sum(freq))
+
+# As we've lost non-grouping variables, let's join them back
+md_to_join <- seurat_meta_data %>% 
+  dplyr::select(MouseID, Diet, annot_treg, Tissue, MouseID2) %>% 
+  unique()
+
+df4  <- left_join(df4, md_to_join)
+
+# The final plot
+
+df4 %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~annot_treg, scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("Both tissues scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+```
+
+
+```{r}
+DimPlot(tregs_tfh)
+
+df4 %>% 
+  dplyr::filter(!is.na(annot_treg) & Tissue == "pLN") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.05, height = 0, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(annot_treg, levels = levels(factor(df4$annot_treg))[c(1,3,5,4,2,6)]),
+             scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("pLN scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+ggsave("figv06/treg_quant_diet_pLN_wilcox_from_cd4.png", width = 32, height = 9, units = "cm")
+ggsave("figv06/treg_quant_diet_pLN_wilcox_from_cd4.svg", width = 32, height = 9, units = "cm")
+
+```
+
+```{r}
+df4
+df4 %>% 
+  dplyr::filter(!is.na(annot_treg) & Tissue == "Spleen") %>% 
+  ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
+  geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
+  geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
+  geom_jitter(width = 0.05, height = 0, shape = 21,
+              size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
+  facet_wrap(~factor(annot_treg, levels = levels(factor(df4$annot_treg))[c(1,3,5,4,2,6)]),
+             scales = "free", ncol = 6) +
+  scale_fill_manual(values = c("dodgerblue","indianred2")) + 
+  scale_color_manual(values = c("dodgerblue","indianred2")) + 
+  ylab("Frequency") +
+  xlab("Condition") +
+  theme_classic() +
+  ylim(0,NA)+
+  theme(strip.background = element_blank(), panel.grid = element_blank()) + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) + ggtitle("SPL scRNAseq") +
+  ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
+  ggtheme()
+
+ ggsave("figv06/treg_quant_diet_SPL_wilcox_from_cd4.svg", width = 32, height = 9, units = "cm")
+
+ggsave("figv06/treg_quant_diet_SPL_wilcox_from_cd4.png", width = 32, height = 9, units = "cm")
+```
 
 
 # Treg FACS 
@@ -3563,6 +3652,10 @@ FeaturePlot(tgd, features = c("Itga4"), pt.size = 2)
 FeaturePlot(tgd, features = c("Klrk1"), pt.size = 2)
 FeaturePlot(tgd, features = c("Cd44"), pt.size = 2)
 
+
+
+FeaturePlot(tgd, features = c("Cd44", "Sell", "Itga4", "Klrk1", "Trbc2", "Cd4"), pt.size = 1, ncol = 3)
+
 ```
 
 
@@ -3575,6 +3668,46 @@ DimPlot(tgd, cells.highlight = colnames(subset(tgd, cdr3_A1 == "CVVGDRGSALGRLHF"
         raster.dpi = c(1200,900)) + ggtheme() + NoLegend()
 #ggsave("figv06/tgd_iNKT.svg", width = 12, height = 9, units = "cm")
 #ggsave("figv06/tgd_iNKT.png", width = 12, height = 9, units = "cm")
+```
+
+
+```{r}
+FeaturePlot(tgd, features = c("Cd44"), pt.size = 12, raster = T,
+        raster.dpi = c(1000,1000)) + ggtheme() + theme(axis.line = element_blank(), 
+                                       axis.title = element_blank(),  
+                                       title = element_text(size = 24),
+                                       axis.text = element_blank(), axis.ticks = element_blank())
+ggsave("figv06/tgd_Cd44.svg", width = 13, height = 10, units = "cm")
+FeaturePlot(tgd, features = c("Sell"), pt.size = 12, raster = T,
+        raster.dpi = c(1000,1000)) + ggtheme() + theme(axis.line = element_blank(), 
+                                       axis.title = element_blank(),  
+                                       title = element_text(size = 24),
+                                       axis.text = element_blank(), axis.ticks = element_blank())
+ggsave("figv06/tgd_Sell.svg", width = 13, height = 10, units = "cm")
+FeaturePlot(tgd, features = c("Cd4"), pt.size = 12, raster = T,
+        raster.dpi = c(1000,1000)) + ggtheme() + theme(axis.line = element_blank(), 
+                                       axis.title = element_blank(),  
+                                       title = element_text(size = 24),
+                                       axis.text = element_blank(), axis.ticks = element_blank())
+ggsave("figv06/tgd_Cd4.svg", width = 13, height = 10, units = "cm")
+FeaturePlot(tgd, features = c("Itga4"), pt.size = 12, raster = T,
+        raster.dpi = c(1000,1000)) + ggtheme() + theme(axis.line = element_blank(), 
+                                       axis.title = element_blank(),  
+                                       title = element_text(size = 24),
+                                       axis.text = element_blank(), axis.ticks = element_blank())
+ggsave("figv06/tgd_Itga4.svg", width = 13, height = 10, units = "cm")
+FeaturePlot(tgd, features = c("Trbc1"), pt.size = 12, raster = T,
+        raster.dpi = c(1000,1000)) + ggtheme() + theme(axis.line = element_blank(), 
+                                       axis.title = element_blank(),  
+                                       title = element_text(size = 24),
+                                       axis.text = element_blank(), axis.ticks = element_blank())
+ggsave("figv06/tgd_Trbc1.svg", width = 13, height = 10, units = "cm")
+FeaturePlot(tgd, features = c("Klrk1"), pt.size = 12, raster = T,
+        raster.dpi = c(1000,1000)) + ggtheme() + theme(axis.line = element_blank(), 
+                                       axis.title = element_blank(),  
+                                       title = element_text(size = 24),
+                                       axis.text = element_blank(), axis.ticks = element_blank())
+ggsave("figv06/tgd_Klrk1.svg", width = 13, height = 10, units = "cm")
 ```
 
 
@@ -3662,8 +3795,8 @@ avgexp = AverageExpression(tgd, features = c("Sell","Cd27","Id3","Trdc","Trgv2",
                                              "Gzmb","Gzmk",
                                              "Pdcd1","Eomes","Cd160","Klre1",
                                              
-                                             "Tbx21","Ifng","Il4","Cxcr6","Cxcr3","Fasl","Id2","Cd44","Il2ra","Icos","Il7r","Gata3","Zbtb16","Rorc", "Klrg1",
-                                             "Ctla4","Nrp1"                                             ),
+                                             "Tbx21","Ifng","Il4","Cxcr6","Cxcr3","Klrk1","Fasl","Id2","Cd44","Il2ra","Icos","Il7r","Gata3","Zbtb16","Rorc", "Klrg1",
+                                             "Ctla4","Nrp1"),
                            return.seurat = F, group.by = "seurat_clusters", 
                           assay = "RNA")
 
@@ -3674,27 +3807,29 @@ pheatmap(t(avgexp$RNA)[c(1,4,5,2,3),], main = "",
         color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
          border_color = "white",
                   fontsize = 12)
+```
 
 
+```{r fig.width = 9, fig.height = 3}
 pheatmap(t(avgexp$RNA)[c(1,4,5,2,3),], main = "",
          scale = "column", cluster_cols = F, cluster_rows = F,
         color=colorRampPalette(c("dodgerblue", "grey95", "indianred2"))(50),
          border_color = "white",
          fontsize = 12, 
-        filename = "figv06/heatmap_tgd_v06.pdf",
+        filename = "figv06/heatmap_tgd_v07.pdf",
          width = 6, height = 2.2,)
 ```
 
 
-```{r}
-
+```{r fig.width = 12, fig.height = 5}
+DimPlot(tgd)
 seurat_meta_data <- tgd@meta.data
 seurat_meta_data$MouseID2 <- paste(str_replace_all(string = seurat_meta_data$MouseID, 
                                             pattern = "Mouse_", 
                                             replacement = ""), seurat_meta_data$Tissue)
 # Create grouped dataframe, calculate the frequencies of clusters
 df4 <- seurat_meta_data %>% 
-  group_by(MouseID, seurat_clusters) %>% 
+  group_by(MouseID2, seurat_clusters) %>% 
   summarise(n = n()) %>% 
   unique() %>% 
   mutate(freq = n / sum(n)) 
@@ -3731,7 +3866,7 @@ df4 %>%
                              method = "t.test", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  #ggsave("figs/tgd_diet_spleen_ttest.png", width = 25, height = 9, units = "cm")
+  ggsave("figs/tgd_diet_spleen_ttest.png", width = 25, height = 9, units = "cm")
 
 df4 %>% 
   dplyr::filter(Tissue == "pLN") %>% 
@@ -3753,7 +3888,7 @@ df4 %>%
                              size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  #ggsave("figs/tgd_diet_pLN_ttest.png", width = 22, height = 9, units = "cm")
+ggsave("figs/tgd_diet_pLN_ttest.png", width = 22, height = 9, units = "cm")
 
   
   #write.csv(df4, "pLN_mw.csv")
@@ -3782,7 +3917,7 @@ seurat_meta_data$MouseID2 <- paste(str_replace_all(string = seurat_meta_data$Mou
                                             replacement = ""), seurat_meta_data$Tissue)
 # Create grouped dataframe, calculate the frequencies of clusters
 df4 <- seurat_meta_data %>% 
-  group_by(MouseID, seurat_clusters) %>% 
+  group_by(MouseID2, seurat_clusters) %>% 
   summarise(n = n()) %>% 
   unique() %>% 
   mutate(freq = n / sum(n)) 
@@ -3807,7 +3942,7 @@ df4 %>%
   ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
   geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
   geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+  geom_jitter(width = 0.1, height = 0, shape = 21,
               size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
   facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
   scale_fill_manual(values = c("dodgerblue","indianred2")) + 
@@ -3821,14 +3956,14 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  ##ggsave("figs/tgd_diet_spleen.svg", width = 25, height = 9, units = "cm")
+  ggsave("figs/tgd_diet_spleen.png", width = 25, height = 9, units = "cm")
 
 df4 %>% 
   dplyr::filter(Tissue == "pLN") %>% 
   ggplot(aes(x = Diet, y = freq*100)) + # you can change the x to whatever variable you're interested in
   geom_boxplot(outlier.shape = NA, aes(fill = Diet), alpha = 0.7) + 
   geom_dotplot(binaxis='y', stackdir='center', dotsize=0) + 
-  geom_jitter(width = 0.1, height = 0.1, shape = 21,
+  geom_jitter(width = 0.1, height = 0, shape = 21,
               size = 4, aes(fill = Diet)) + # in aes, you can also use shape or fill (for the shapes that allow it)
   facet_wrap(~seurat_clusters, scales = "free", ncol = 6) +
   scale_fill_manual(values = c("dodgerblue","indianred2")) + 
@@ -3842,7 +3977,7 @@ df4 %>%
   ggpubr::stat_compare_means(label.x = 1.2, label.y.npc = "top", size = 5, vjust = 0.3, label = "p.format") + 
   ggtheme()
 
-  ##ggsave("figs/tgd_diet_pLN.svg", width = 22, height = 9, units = "cm")
+  ggsave("figs/tgd_diet_pLN.png", width = 22, height = 9, units = "cm")
 
 ```
 
