@@ -1779,53 +1779,6 @@ dir.create("tables")
 ```
 
 
-```{r}
-library(ggVennDiagram)
-library(gplots)
-```
-
-
-```{r}
-x_gfd <- list(
-  pLN = mrk_de_pLN %>% dplyr::filter(cluster == "GFD") %>% pull(gene), 
-  SPL = mrk_de_spl %>% dplyr::filter(cluster == "GFD") %>% pull(gene)) 
- ggVennDiagram(x_gfd)
-  #ggsave("figs/venn_gfd.svg", width = 10, height = 6, units = "cm")
-
- 
- v.table <- venn(x_gfd)
- print(v.table)
-```
-
-```{r}
-x_std <- list(
-  pLN = mrk_de_pLN %>% dplyr::filter(cluster == "Standard") %>% pull(gene), 
-  Spl = mrk_de_spl %>% dplyr::filter(cluster == "Standard") %>% pull(gene)) 
- ggVennDiagram(x_std)
- #ggsave("figs/venn_std.svg", width = 10, height = 6, units = "cm")
- v.table <- venn(x_std)
-
-    print(v.table)
-```
-
-
-```{r}
-library(ensembldb)
-library(EnsDb.Mmusculus.v79)
-
-geneIDs1 <- ensembldb::select(EnsDb.Mmusculus.v79, keys= mrk_de_whole_data$gene, 
-                              keytype = "SYMBOL", columns = c("SYMBOL","ENTREZID"))
-
-colnames(geneIDs1)  <- c("gene", "entrezid")
-
-geneIDs1
-
-all_markers2  <- mrk_de_whole_data  %>% 
-                     left_join(geneIDs1) 
-
-all_markers2
-```
-
 ## Heatmap all DE genes
 
 ```{r}
@@ -1835,12 +1788,19 @@ genes_selection <- c("S100a6", "Lef1","Irf7","Lck","Lat","Id3", "Myc", "Itgb2", 
 "Foxp3","Ly6a", "Usp18","Klrd1","Ifi27","Isg15" ,"Foxo1","Bcl2","Epsti1","Slamf6","Il18r1")
 
 
+
+
 rownames(avgexp$RNA)
 ```
 
 ```{r}
 genes_selection <- c("Lef1","Irf7","Lck","Lat","Id3", "Myc",  "Cd40lg", "Ifngr1",
 "Foxp3","Ly6a", "Usp18","Klrd1","Ifi27","Isg15" ,"Foxo1","Epsti1","Slamf6","Il18r1","Ddit4","Sgk1")
+
+
+avgexp = AverageExpression(funda_merge, features = rev(mrk_de_whole_data$gene),
+                           return.seurat = F, group.by = "MouseID", 
+                          assay = "RNA")
 
 ```
 
@@ -2249,65 +2209,214 @@ ggplot(aes(x = factor(gene), y = population)) +
 ```
 
 ```{r}
+
 mrk_all %>% group_by(cluster, population) %>% tally %>% 
-  ggplot(aes())
+ ggplot(aes(x = population, y = n)) +
+geom_bar(aes(fill = cluster), stat = "identity") + coord_flip() +
+ggtheme() + 
+theme_bw() + 
+scale_fill_manual(values = c("#90c2f1ff", "#d0625dff")) + theme(axis.ticks.y = element_blank())
+
 ```
-
-
-DESeq
-
 ```{r}
-
+mrk_all %>% group_by(cluster, gene) %>% tally %>% arrange(desc(n))
+```
+```{r}
 
 for(i in 1:6){
   funda_ds <- subset(funda_merge, annotations_super_coarse == clusters[i])
-  Idents(funda_ds) <- funda_ds$MouseID
-funda_bulk <- AggregateExpression(funda_ds, group.by = c("MouseID", "Diet"), 
-                                return.seurat = T, assays = "RNA")
-
-funda_bulk$Diet <- substr(colnames(funda_bulk),9,10)
-Idents(funda_bulk) <- funda_bulk$Diet
-Idents(funda_bulk)
-
-  mrk_de <- FindAllMarkers(funda_bulk, 
-                        min.pct = 0,
-                        min.diff.pct = 0, 
-                        min.cells.feature = 0,
-                        min.cells.group = 0,
-                        logfc.threshold = 0,
-                        only.pos = T,
-                        return.thresh = 0.005,
-                        #ident.1 = "GF", ident.2 = "St", 
-                        test.use = "t")
-mrk_de
+  Idents(funda_merge) <- funda_merge$Diet
+mrk_de <- FindAllMarkers(funda_ds, only.pos = TRUE, return.thresh = 1, min.diff.pct = 0, logfc.threshold = -Inf, min.pct = -Inf, )
 mrk_de$population <- clusters[i]
-
+mrk_de$gene <- rownames(mrk_de)
 if(i == 1){
-  mrk_all_bulk <- mrk_de
+  mrk_fc_all <- mrk_de
 } else {
-  mrk_all_bulk <- rbind(mrk_all_bulk, mrk_de)
+  mrk_fc_all <- rbind(mrk_fc_all, mrk_de)
 }
 }
 
+
+mrk_fc_all$cluster %>% table
+
+mrk_fc_all %>% dplyr::filter(gene == "Lck")
+```
+
+```{r fig.width = 14, fig.height=4}
+
+mrk_fc_all
 mrk_all
 
-mrk_all %>% 
-  dplyr::filter(cluster == "GFD") %>% 
-  group_by(gene) %>% tally %>% arrange(desc(n))
+signif_genes <- mrk_all %>% dplyr::filter(p_val_adj < 0.05) %>% pull(gene) %>% unique 
+
+top50_genes <- mrk_all %>% group_by(population) %>% slice_max(order_by = avg_log2FC, n = 50) %>% pull(gene) %>% unique 
+top50_genes
+
+top30_genes <- mrk_all %>% group_by(population) %>% slice_max(order_by = avg_log2FC, n = 30) %>% pull(gene) %>% unique 
+
+top20_genes <- mrk_all %>% group_by(population) %>% slice_max(order_by = avg_log2FC, n = 20) %>% pull(gene) %>% unique 
+
+mtx_logfc <- mrk_fc_all %>% dplyr::filter(gene %in% signif_genes) %>% 
+  mutate(avg_log2FC = ifelse(cluster == "Standard",avg_log2FC*-1, avg_log2FC)) %>% 
+  dplyr::select(avg_log2FC, gene, population) %>% 
+  pivot_wider(names_from = population, values_from = avg_log2FC) %>% 
+  column_to_rownames("gene") %>% 
+  as.matrix()
+
+
+pheatmap::pheatmap(t(mtx_logfc), scale = "none", color=colorRampPalette(c("dodgerblue", "grey95", "indianred2",  "indianred2", "indianred2"))(50), 
+         border_color = "white")
+
+
+```
+
+```{r}
+mtx_logfc <- mrk_fc_all %>% dplyr::filter(gene %in% top30_genes) %>% 
+  mutate(avg_log2FC = ifelse(cluster == "Standard",avg_log2FC*-1, avg_log2FC)) %>% 
+  #mutate(avg_log2FC = ifelse(p_val_adj < 0.05,avg_log2FC, avg_log2FC/20)) %>% 
+  
+  dplyr::select(avg_log2FC, gene, population) %>% 
+  pivot_wider(names_from = population, values_from = avg_log2FC) %>% 
+  column_to_rownames("gene") %>% 
+  as.matrix()
+
+
+pheatmap::pheatmap(t(mtx_logfc), scale = "none", color=colorRampPalette(c("dodgerblue", "grey95", "indianred2", "indianred2",  "indianred2"))(50), 
+         border_color = "white")
+
+
+
 
 ```
 
 
+
+
+```{r fig.width = 5, fig.height = 25}
+
+hm <- pheatmap::pheatmap(mtx_logfc, scale = "none", color=colorRampPalette(c("dodgerblue", "grey95", "indianred2", "indianred2", "indianred2"))(50), 
+         border_color = "white")
+```
+
+
+
+```{r fig.width = 25, fig.height = 5}
+mrk_fc_all %>% dplyr::filter(gene %in% top30_genes) %>% 
+   mutate(avg_log2FC = ifelse(avg_log2FC > 1,1, avg_log2FC)) %>% 
+  mutate(avg_log2FC = ifelse(cluster == "Standard",avg_log2FC*-1, avg_log2FC)) %>% 
+  ggplot(aes(x = factor(population, levels = hm$tree_col$labels[hm$tree_col$order]), 
+           y = factor(gene, levels = hm$tree_row$labels[hm$tree_row$order] ))) +
+geom_point(aes(size = abs(avg_log2FC), colour = avg_log2FC)) + 
+  theme_bw() +
+scale_size_continuous(range=c(1,8)) +
+  #geom_text(aes(label = p.adj.signif)) + 
+  scale_colour_gradient2(low = "dodgerblue", mid = "white", high = "salmon", midpoint = 0) +
+  theme_bw() + theme(axis.text.x = element_text(angle = 90))  +
+xlab("") + ylab("") + ggtheme() + coord_flip()
+
+ggsave(filename = "figs/genes_in_clusters.svg", height = 10, width = 60, 
+       units = "cm")
+
+```
+
+```{r}
+mrk_fc_all %>% dplyr::filter(gene %in% top20_genes) %>% 
+   mutate(avg_log2FC = ifelse(avg_log2FC > 1,1, avg_log2FC)) %>% 
+  mutate(avg_log2FC = ifelse(cluster == "Standard",avg_log2FC*-1, avg_log2FC)) %>% 
+  ggplot(aes(x = factor(population, levels = hm$tree_col$labels[hm$tree_col$order]), 
+           y = factor(gene, levels = hm$tree_row$labels[hm$tree_row$order] ))) +
+geom_point(aes(size = abs(avg_log2FC), colour = avg_log2FC)) + 
+  theme_bw() +
+scale_size_continuous(range=c(1,8)) +
+  #geom_text(aes(label = p.adj.signif)) + 
+  scale_colour_gradient2(low = "dodgerblue", mid = "white", high = "salmon", midpoint = 0) +
+  theme_bw() + theme(axis.text.x = element_text(angle = 90))  +
+xlab("") + ylab("") + ggtheme() + coord_flip()
+
+ggsave(filename = "figs/genes_in_clusters.svg", height = 10, width = 40, 
+       units = "cm")
+
+
+
+```
+
+
+
+```{r}
+avgexp = AverageExpression(funda_merge, features = c("Ccl5","Gzma","Gzmb","Klre1","Cx3cr1"),
+                           return.seurat = F, group.by = c("MouseID", "annotations_super_coarse"),
+                          assay = "RNA")
+
+
+df <- avgexp$RNA %>% as.data.frame() %>% rownames_to_column("gene") %>% pivot_longer(!gene, names_to = "MouseID_Population", values_to = "Expression") %>% 
+  mutate(Mouse_ID = substr(MouseID_Population,1,7),
+         Population = substr(MouseID_Population,9,50)) %>% mutate(
+           Diet = ifelse(substr(MouseID_Population,7,7) %in% c(1:5),"GFD","STD")
+         )
+
+df
+
+df %>% ggplot(aes(x = Diet, y = Expression)) +
+  geom_point() +
+  geom_boxplot() +
+  facet_grid(rows = vars(gene), cols = vars(Population), scales = "free")
+```
 
 
 ### GO in clusters
 
 ```{r}
-m_df<- msigdbr(species = "Mus musculus", category = "C7")
+m_df<- msigdbr::msigdbr(species = "Mus musculus", category = "C7")
 fgsea_sets<- m_df %>% split(x = .$gene_symbol, f = .$gs_name)
-paths_fc  <- list.files("../tables/fold_change", full.names = T)
-dataset_names  <- list.files("../tables/fold_change", full.names = F)
 
+```
+
+```{r}
+j = 1
+clusters
+
+mrk_fc_all %>% dplyr::filter(population == clusters[j]) %>% 
+  mutate(avg_log2FC = ifelse(cluster == "Standard",avg_log2FC*-1, avg_log2FC)) %>% 
+  arrange((avg_log2FC))
+
+
+mrk_fc_all2 <- mrk_fc_all  %>% 
+  mutate(avg_log2FC = ifelse(cluster == "Standard",avg_log2FC*-1, avg_log2FC)) %>% 
+  arrange((avg_log2FC))
+
+
+```
+
+
+
+```{r}
+gsea_all_pathways  <- function(j) {
+  print(j)
+
+fc.df  <- mrk_fc_all2 %>% dplyr::filter(population == clusters[j])  %>%  arrange(desc(avg_log2FC)) %>% 
+  dplyr::select(gene, avg_log2FC)
+ranks<- deframe(fc.df)
+      
+fgseaRes <- fgsea(pathways = fgsea_sets, 
+                 stats = ranks)
+ fgseaRes$population <- clusters[j]
+ return(fgseaRes)
+    }
+
+
+for(i in 1:length(clusters)){
+  
+  fc_final_df <- gsea_all_pathways(i)
+  
+  if(i == i){
+    fc_final_df_all <- fc_final_df
+  } else {
+    fc_final_df_all <- rbind(fc_final_df_all, fc_final_df)
+  }
+  
+  
+  
+}
 
 
 ```
