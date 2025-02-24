@@ -2408,7 +2408,7 @@ for(i in 1:length(clusters)){
   
   fc_final_df <- gsea_all_pathways(i)
   
-  if(i == i){
+  if(i == 1){
     fc_final_df_all <- fc_final_df
   } else {
     fc_final_df_all <- rbind(fc_final_df_all, fc_final_df)
@@ -2418,6 +2418,109 @@ for(i in 1:length(clusters)){
   
 }
 
+
+fc_final_df_all$population %>% table
+
+
+
+
+```
+
+```{r fig.width = 14, fig.height = 5}
+fc_final_df_all %>% dplyr::filter(pathway %in% c("GSE28726_NAIVE_VS_ACTIVATED_CD4_TCELL_DN",
+  "GSE14415_INDUCED_TREG_VS_TCONV_UP",
+  "GOLDRATH_NAIVE_VS_EFF_CD8_TCELL_DN"
+  )) %>% 
+  mutate(signif = ifelse(padj < 0.05, "*","")) %>% 
+  ggplot(aes(x = population, y = pathway)) +
+  geom_point(aes(fill = NES, size = -log(padj)), shape = 21) +
+  scale_fill_gradient2(low = "dodgerblue", mid = "white", high = "indianred2", midpoint = 0) + scale_size_continuous(range=c(4,7)) +
+  geom_text(aes(label = signif)) + 
+  scale_colour_gradient2(low = "dodgerblue", mid = "white", high = "salmon", midpoint = 0) +
+  theme_bw() + ggtheme()  + theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+
+ggsave(filename = "figs/gsea_in_clusters_c7.svg", height = 8, width = 30, 
+       units = "cm")
+
+```
+
+
+
+```{r}
+m_df_h <- msigdbr::msigdbr(species = "Mus musculus", category = "H")
+fgsea_sets_h <- m_df_h %>% split(x = .$gene_symbol, f = .$gs_name)
+
+m_df_h
+```
+
+
+```{r}
+gsea_all_pathways  <- function(j) {
+  print(j)
+
+fc.df  <- mrk_fc_all2 %>% dplyr::filter(population == clusters[j])  %>%  arrange(desc(avg_log2FC)) %>% 
+  dplyr::select(gene, avg_log2FC)
+ranks<- deframe(fc.df)
+      
+fgseaRes <- fgsea(pathways = fgsea_sets_h, 
+                 stats = ranks)
+ fgseaRes$population <- clusters[j]
+ return(fgseaRes)
+    }
+
+
+for(i in 1:length(clusters)){
+  
+  fc_final_df_h <- gsea_all_pathways(i)
+  
+  if(i == 1){
+    fc_final_df_all_h <- fc_final_df_h
+  } else {
+    fc_final_df_all_h <- rbind(fc_final_df_all_h, fc_final_df_h)
+  }
+  
+  
+  
+}
+
+
+fc_final_df_all_h$population %>% table
+```
+
+
+```{r fig.width = 14, fig.height = 5}
+fc_final_df_all_h %>% arrange(padj)
+
+df_filt <- fc_final_df_all_h %>% dplyr::filter(pathway %in% c("HALLMARK_MYC_TARGETS_V1",
+  "HALLMARK_MTORC1_SIGNALING",
+    "HALLMARK_IL2_STAT5_SIGNALING",
+  "HALLMARK_INTERFERON_ALPHA_RESPONSE",
+  "HALLMARK_INTERFERON_GAMMA_RESPONSE",
+  "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
+  )) %>% 
+  mutate(signif = ifelse(padj < 0.05, "*",""))
+
+df_filt$pathway <- factor(df_filt$pathway, levels = c("HALLMARK_MYC_TARGETS_V1",
+  "HALLMARK_MTORC1_SIGNALING",
+    "HALLMARK_IL2_STAT5_SIGNALING",
+  "HALLMARK_INTERFERON_ALPHA_RESPONSE",
+  "HALLMARK_INTERFERON_GAMMA_RESPONSE",
+  "HALLMARK_TNFA_SIGNALING_VIA_NFKB"
+  ))
+
+df_filt %>% 
+  ggplot(aes(x = population, y = pathway)) +
+  geom_point(aes(fill = NES, size = -log(padj)), shape = 21) +
+  scale_fill_gradient2(low = "dodgerblue", mid = "white", high = "indianred2", midpoint = 0) + scale_size_continuous(range=c(4,12)) +
+  geom_text(aes(label = signif)) + 
+  scale_colour_gradient2(low = "dodgerblue", mid = "white", high = "salmon", midpoint = 0) +
+  theme_bw() + ggtheme()  + theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5))
+```
+
+
+```{r}
+ggsave(filename = "figs/gsea_in_clusters_h.svg", height = 12, width = 28, 
+       units = "cm")
 
 ```
 
