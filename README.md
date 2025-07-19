@@ -2,7 +2,7 @@
 
  This repository contains an analysis of the single-cell RNA sequencing of tissues from NOD mice on gluten free diet (GFD) and mice on standard diet (STD). The manuscript has now been [published in the European Journal of Immunology](https://onlinelibrary.wiley.com/doi/full/10.1002/eji.202451559). 
  
-![Graphical abstract from EJI](graphical-abstract_small.png)
+![Graphical abstract from EJI](graphical_abstract_small.png)
  
  The analysis has three main parts:
 - Part 1: Analysis of scRNAseq data 
